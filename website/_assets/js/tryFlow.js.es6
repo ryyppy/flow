@@ -134,10 +134,8 @@ function getAnnotations(text, callback, options, editor) {
 }
 getAnnotations.async = true;
 
-const defaultValue = 
-  localStorage['tryFlowLastContent']
-  ? getHashedValue(localStorage.getItem('tryFlowLastContent'))
-  : `/* @flow */
+const lastEditorValue = localStorage.getItem('tryFlowLastContent');
+const defaultValue = (lastEditorValue && getHashedValue(lastEditorValue)) || `/* @flow */
 
 function foo(x: ?number): string {
   if (x) {
