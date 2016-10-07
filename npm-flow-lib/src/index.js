@@ -1,6 +1,7 @@
 // @flow
 
 import type {TProgram} from "./astTypes";
+import type {FlowResult} from "./jsonResultTypes";
 import {cmd} from "./lib/comm";
 
 /**
@@ -15,6 +16,23 @@ export async function astFromFileContents(
     throw new Error(err);
   }
   return res;
+}
+
+/**
+ * `flow status --json`
+ */
+export async function status(
+  cwd: string,
+  root: ?string
+): Promise<FlowResult> {
+  const args = (root != null ? [root] : []);
+  const [res, err] = await cmd(cwd, "status", [], args);
+
+  if (res == null) {
+    throw new Error(err);
+  }
+
+  return (res: FlowResult);
 }
 
 /**
@@ -34,26 +52,10 @@ export async function astFromFilePath(
 /**
  * `flow check-contents < fileContents`
  */
-type CheckContentsResult = {
-  passed: boolean,
-  errors: Array<{
-    message: Array<{
-      descr: string,
-      level: string,
-      path: string,
-      line: number,
-      endline: number,
-      start: number,
-      end: number,
-    }>,
-    kind: string,
-  }>,
-  version: string,
-};
 export async function checkContents(
   cwd: string,
   fileContents: string
-): Promise<CheckContentsResult> {
+): Promise<FlowResult> {
   const [res, err] = await cmd(cwd, "check-contents", [], [], fileContents);
   if (res == null) {
     throw new Error(err);
