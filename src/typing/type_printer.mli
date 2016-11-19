@@ -8,7 +8,7 @@
  *
  *)
 
-val string_of_t: Context.t -> Type.t -> string
+val string_of_t: ?size:int -> Context.t -> Type.t -> string
 
 val parameter_name: Context.t -> string -> Type.t -> string
 val string_of_param_t: Context.t -> Type.t -> string
@@ -33,8 +33,8 @@ type enclosure_t =
   | EnclosureProp
 
 val type_printer:
+  ?size:int ->
   (Context.t -> Type.t -> string option) ->
-  (Type.t -> string) ->
   enclosure_t ->
   Context.t ->
   Type.t ->

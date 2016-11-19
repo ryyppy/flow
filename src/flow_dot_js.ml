@@ -72,23 +72,25 @@ let load_lib_files ~master_cx ~metadata files
 let stub_metadata ~root ~checked = { Context.
   checked;
   enable_const_params = false;
-  enable_unsafe_getters_and_setters = false;
-  enforce_strict_type_args = false;
-  esproposal_class_static_fields = Options.ESPROPOSAL_WARN;
-  esproposal_class_instance_fields = Options.ESPROPOSAL_WARN;
-  esproposal_decorators = Options.ESPROPOSAL_WARN;
-  esproposal_export_star_as = Options.ESPROPOSAL_WARN;
-  facebook_ignore_fbt = false;
+  enable_unsafe_getters_and_setters = true;
+  enforce_strict_type_args = true;
+  esproposal_class_static_fields = Options.ESPROPOSAL_ENABLE;
+  esproposal_class_instance_fields = Options.ESPROPOSAL_ENABLE;
+  esproposal_decorators = Options.ESPROPOSAL_ENABLE;
+  esproposal_export_star_as = Options.ESPROPOSAL_ENABLE;
+  facebook_fbt = None;
   ignore_non_literal_requires = false;
   max_trace_depth = 0;
   max_workers = 0;
   munge_underscores = false;
+  output_graphml = false;
   root;
   strip_root = true;
   suppress_comments = [];
   suppress_types = SSet.empty;
   verbose = None;
   weak = false;
+  jsx = None;
 }
 
 let get_master_cx =
@@ -117,7 +119,7 @@ let set_libs filenames =
     (fun _file _sups -> ()) in
 
   Flow_js.Cache.clear();
-  let reason = Reason.builtin_reason "module" in
+  let reason = Reason.builtin_reason (Reason.RCustom "module") in
   let builtin_module = Flow_js.mk_object master_cx reason in
   Flow_js.flow_t master_cx (builtin_module, Flow_js.builtins master_cx);
   Merge_js.ContextOptimizer.sig_context [master_cx]
@@ -146,7 +148,7 @@ let check_content ~filename ~content =
     ) (Context.required cx) [] in
 
     let master_cx = get_master_cx root in
-    Merge_js.merge_component_strict [cx] [] [] decls master_cx;
+    Merge_js.merge_component_strict [cx] [] [] [] decls master_cx;
 
     Context.errors cx
   | _, parse_errors ->
@@ -250,5 +252,7 @@ let () = Js.Unsafe.set exports
   "jsOfOcamlVersion" (Js.string Sys_js.js_of_ocaml_version)
 let () = Js.Unsafe.set exports
   "flowVersion" (Js.string FlowConfig.version)
+let () = Js.Unsafe.set exports
+  "parse" (Js.wrap_callback Flow_parser_js.parse)
 let () = Js.Unsafe.set exports
   "typeAtPos" (Js.wrap_callback type_at_pos)

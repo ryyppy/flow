@@ -59,10 +59,138 @@ module TestID = struct
 
 end
 
+type reason_desc =
+  | RNumber | RString | RBoolean | RMixed | REmpty | RAny | RVoid | RNull
+  | RStringLit of string
+  | RNumberLit of string
+  | RBooleanLit of bool
+  | RObject
+  | RObjectLit
+  | RObjectType
+  | RObjectClassName
+  | RArray
+  | RArrayLit
+  | REmptyArrayLit
+  | RArrayType
+  | RTupleType
+  | RTupleElement
+  | RFunction of reason_desc_function
+  | RArrowFunction of reason_desc_function
+  | RFunctionType
+  | RFunctionBody
+  | RFunctionCall
+  | RJSXFunctionCall of string
+  | RJSXIdentifier of string * string
+  | RJSXElementProps of string
+  | RJSXElement of string option
+  | RAnyObject
+  | RAnyFunction
+  | RUnknownString
+  | RStringEnum
+  | RNumberEnum
+  | RGetterFunction
+  | RSetterFunction
+  | RGetterSetterProperty
+  | RThis
+  | RThisType
+  | RExistential
+  | RTooFewArgs
+  | RTooFewArgsExpectedRest
+  | RUninitializedThis
+  | RConstructorReturn
+  | RNewObject
+  | RUnion
+  | RUnionType
+  | RIntersection
+  | RIntersectionType
+  | RKeySet
+  | RAnd
+  | RConditional
+  | RPrototype
+  | RDestructuring
+  | RConstructor
+  | RConstructorCall
+  | RReturn
+  | RRegExp
+  | RSuper
+  | RNoSuper
+  | RDummyPrototype
+  | RDummyThis
+  | RTupleMap
+  | RObjectMap
+  | RObjectMapi
+  | RType of string
+  | RTypeParam of string * reason_desc
+  | RMethodCall of string option
+  | RParameter of string
+  | RRestParameter of string
+  | RIdentifier of string
+  | RIdentifierAssignment of string
+  | RPropertyAssignment of string
+  | RProperty of string option
+  | RShadowProperty of string
+  | RPropertyOf of string * reason_desc
+  | RPropertyIsAString of string
+  | RMissingProperty of string option
+  | RUnknownProperty of string option
+  | RSomeProperty
+  | RNameProperty of reason_desc
+  | RMissingAbstract of reason_desc
+  | RFieldInitializer of string
+  | RCustom of string
+  | RPolyType of reason_desc
+  | RClassType of reason_desc
+  | RExactType of reason_desc
+  | ROptional of reason_desc
+  | RMaybe of reason_desc
+  | RRestArray of reason_desc
+  | RAbstract of reason_desc
+  | RTypeApp of reason_desc
+  | RThisTypeApp of reason_desc
+  | RExtends of reason_desc
+  | RStatics of reason_desc
+  | RSuperOf of reason_desc
+  | RFrozen of reason_desc
+  | RBound of reason_desc
+  | RVarianceCheck of reason_desc
+  | RPredicateOf of reason_desc
+  | RPredicateCall of reason_desc
+  | RPredicateCallNeg of reason_desc
+  | RIncompatibleInstantiation of string
+  | RSpreadOf of reason_desc
+  | RObjectPatternRestProp
+  | RArrayPatternRestProp
+
+  | RReactElement of string option
+  | RReactClass
+  | RReactComponent
+  | RReactStatics
+  | RReactDefaultProps
+  | RReactState
+  | RReactComponentProps
+  | RReactElementProps of string
+  | RReactPropTypes
+  | RPropTypeArray
+  | RPropTypeFunc
+  | RPropTypeObject
+  | RPropTypeArrayOf
+  | RPropTypeInstanceOf
+  | RPropTypeObjectOf
+  | RPropTypeOneOf
+  | RPropTypeOneOfType
+  | RPropTypeShape
+  | RPropTypeFbt
+
+and reason_desc_function =
+  | RAsync
+  | RGenerator
+  | RAsyncGenerator
+  | RNormal
+
 type reason = {
   test_id: int option;
   derivable: bool;
-  desc: string;
+  desc: reason_desc;
   loc: Loc.t;
   (* origin is a persistent reason, immune to repos_reason *)
   origin: reason option;
@@ -115,24 +243,29 @@ let do_patch lines insertions =
   patch 1 0 lines insertions;
   String.concat "\n" (Array.to_list lines)
 
+let string_of_loc_pos loc = Loc.(
+  let line = loc.start.line in
+  let start = loc.start.column + 1 in
+  let end_ = loc._end.column in
+  if line <= 0 then
+    "0:0"
+  else if line = loc._end.line && start = end_ then
+    spf "%d:%d" line start
+  else if line != loc._end.line then
+    spf "%d:%d,%d:%d" line start loc._end.line end_
+  else
+    spf "%d:%d-%d" line start end_
+)
+
 let string_of_loc loc = Loc.(
   match loc.source with
   | None
   | Some Builtins -> ""
   | Some LibFile file
   | Some SourceFile file
-  | Some JsonFile file ->
-    let line = loc.start.line in
-    let start = loc.start.column + 1 in
-    let end_ = loc._end.column in
-    if line <= 0 then
-      spf "%s:0:0" file
-    else if line = loc._end.line && start = end_ then
-      spf "%s:%d:%d" file line start
-    else if line != loc._end.line then
-      spf "%s:%d:%d,%d:%d" file line start loc._end.line end_
-    else
-      spf "%s:%d:%d-%d" file line start end_
+  | Some JsonFile file
+  | Some ResourceFile file ->
+    spf "%s:%s" file (string_of_loc_pos loc)
 )
 
 (* helper: strip root from positions *)
@@ -146,13 +279,9 @@ let strip_root_from_loc root loc = Loc.(
     then Some (LibFile (spf "[LIB] %s" (Files.relative_path root_str file)))
     else Some (LibFile (spf "[LIB] %s" (Filename.basename file)))
 
-  | Some SourceFile file ->
+  | Some (SourceFile _ | JsonFile _ | ResourceFile _ as filename) ->
     let root_str = spf "%s%s" (Path.to_string root) Filename.dir_sep in
-    Some (SourceFile (Files.relative_path root_str file))
-
-  | Some JsonFile file ->
-    let root_str = spf "%s%s" (Path.to_string root) Filename.dir_sep in
-    Some (JsonFile (Files.relative_path root_str file))
+    Some (Loc.filename_map (Files.relative_path root_str) filename)
   in
   { loc with source }
 )
@@ -173,6 +302,7 @@ let json_of_loc ?(strip_root=None) loc = Hh_json.(Loc.(
     | Some LibFile _ -> JSON_String "LibFile"
     | Some SourceFile _ -> JSON_String "SourceFile"
     | Some JsonFile _ -> JSON_String "JsonFile"
+    | Some ResourceFile _ -> JSON_String "ResourceFile"
     | Some Builtins -> JSON_String "Builtins"
     | None -> JSON_Null);
     "start", JSON_Object [
@@ -205,14 +335,163 @@ let mk_reason desc loc =
   mk_reason_with_test_id (TestID.current()) desc loc ()
 
 (* Lift a string to a reason. Usually used as a dummy reason. *)
-let reason_of_string s =
-  mk_reason_with_test_id None s Loc.none ()
+let locationless_reason desc =
+  mk_reason_with_test_id None desc Loc.none ()
 
 let loc_of_reason r = r.loc
 
+let function_desc_prefix = function
+  | RAsync -> "async "
+  | RGenerator -> "generator "
+  | RAsyncGenerator -> "async generator "
+  | RNormal -> ""
+
+let rec string_of_desc = function
+  | RNumber -> "number"
+  | RString -> "string"
+  | RBoolean -> "boolean"
+  | RMixed -> "mixed"
+  | REmpty -> "empty"
+  | RAny -> "any"
+  | RVoid -> "undefined"
+  | RNull -> "null"
+  | RStringLit x -> spf "string literal `%s`" x
+  | RNumberLit x -> spf "number literal `%s`" x
+  | RBooleanLit b -> spf "boolean literal `%s`" (string_of_bool b)
+  | RObject -> "object"
+  | RObjectLit -> "object literal"
+  | RObjectType -> "object type"
+  | RObjectClassName -> "Object"
+  | RArray -> "array"
+  | RArrayLit -> "array literal"
+  | REmptyArrayLit -> "empty array literal"
+  | RArrayType -> "array type"
+  | RTupleType -> "tuple type"
+  | RTupleElement -> "tuple element"
+  | RFunction func -> spf "%sfunction" (function_desc_prefix func)
+  | RArrowFunction func -> spf "%sarrow function" (function_desc_prefix func)
+  | RFunctionType -> "function type"
+  | RFunctionBody -> "function body"
+  | RFunctionCall -> "function call"
+  | RJSXFunctionCall raw_jsx -> spf "JSX desugared to `%s(...)`" raw_jsx
+  | RJSXIdentifier (raw_jsx, name) ->
+      spf "JSX desugared to `%s(...)`. identifier %s" raw_jsx name
+  | RJSXElement x ->
+    (match x with
+    | Some x -> spf "JSX element `%s`" x
+    | None -> "JSX element")
+  | RJSXElementProps x -> spf "props of JSX element `%s`" x
+  | RAnyObject -> "any object"
+  | RAnyFunction -> "any function"
+  | RUnknownString -> "some string with unknown value"
+  | RStringEnum -> "string enum"
+  | RNumberEnum -> "number enum"
+  | RGetterFunction -> "getter function"
+  | RSetterFunction -> "setter function"
+  | RGetterSetterProperty -> "getter/setter property"
+  | RThis -> "this"
+  | RThisType -> "`this` type"
+  | RExistential -> "existential"
+  | RTooFewArgs -> "undefined (too few arguments)"
+  | RTooFewArgsExpectedRest ->
+    "undefined (too few arguments, expected default/rest parameters)"
+  | RUninitializedThis -> "uninitialized this (expected super constructor call)"
+  | RConstructorReturn -> "constructor return"
+  | RNewObject -> "new object"
+  | RUnion -> "union"
+  | RUnionType -> "union type"
+  | RIntersection -> "intersection"
+  | RIntersectionType -> "intersection type"
+  | RKeySet -> "key set"
+  | RAnd -> "and"
+  | RConditional -> "conditional"
+  | RPrototype -> "prototype"
+  | RDestructuring -> "destructuring"
+  | RConstructor -> "constructor"
+  | RConstructorCall -> "constructor call"
+  | RReturn -> "return"
+  | RRegExp -> "regexp"
+  | RSuper -> "`super` pseudo-expression"
+  | RNoSuper -> "empty super object"
+  | RDummyPrototype -> "empty prototype object"
+  | RDummyThis -> "bound `this` in method"
+  | RTupleMap -> "tuple map"
+  | RObjectMap -> "object map"
+  | RObjectMapi -> "object mapi"
+  | RType x -> spf "type `%s`" x
+  | RTypeParam (x,d) -> spf "type parameter `%s` of %s" x (string_of_desc d)
+  | RIdentifier x -> spf "identifier `%s`" x
+  | RIdentifierAssignment x -> spf "assignment of identifier `%s`" x
+  | RMethodCall (Some x) -> spf "call of method `%s`" x
+  | RMethodCall None -> "call of computed property"
+  | RParameter x -> spf "parameter `%s`" x
+  | RRestParameter x -> spf "rest parameter `%s`" x
+  | RProperty (Some x) -> spf "property `%s`" x
+  | RProperty None -> "computed property"
+  | RPropertyAssignment x -> spf "assignment of property `%s`" x
+  | RShadowProperty x -> spf ".%s" x
+  | RPropertyOf (x, d) -> spf "property `%s` of %s" x (string_of_desc d)
+  | RPropertyIsAString x -> spf "property `%s` is a string" x
+  | RMissingProperty (Some x) -> spf "property `%s` does not exist" x
+  | RMissingProperty None -> "computed property does not exist"
+  | RUnknownProperty (Some x) -> spf "property `%s` of unknown type" x
+  | RUnknownProperty None -> "computed property of unknown type"
+  | RSomeProperty -> "some property"
+  | RNameProperty d -> spf "property `name` of %s" (string_of_desc d)
+  | RMissingAbstract d ->
+    spf "undefined. Did you forget to declare %s?" (string_of_desc d)
+  | RFieldInitializer x -> spf "field initializer for `%s`" x
+  | RCustom x -> x
+  | RPolyType d -> spf "polymorphic type: %s" (string_of_desc d)
+  | RClassType d -> spf "class type: %s" (string_of_desc d)
+  | RExactType d -> spf "exact type: %s" (string_of_desc d)
+  | ROptional d -> spf "optional %s" (string_of_desc d)
+  | RMaybe d -> spf "?%s" (string_of_desc d)
+  | RRestArray d -> spf "rest array of %s" (string_of_desc d)
+  | RAbstract d -> spf "abstract %s" (string_of_desc d)
+  | RTypeApp d -> spf "type application of %s" (string_of_desc d)
+  | RThisTypeApp d -> spf "this instantiation of %s" (string_of_desc d)
+  | RExtends d -> spf "extends %s" (string_of_desc d)
+  | RStatics d -> spf "statics of %s" (string_of_desc d)
+  | RSuperOf d -> spf "super of %s" (string_of_desc d)
+  | RFrozen d -> spf "frozen %s" (string_of_desc d)
+  | RBound d -> spf "bound %s" (string_of_desc d)
+  | RVarianceCheck d -> spf "variance check: %s" (string_of_desc d)
+  | RPredicateOf d -> spf "predicate of %s" (string_of_desc d)
+  | RPredicateCall d -> spf "predicate call to %s" (string_of_desc d)
+  | RPredicateCallNeg d ->
+    spf "negation of predicate call to %s" (string_of_desc d)
+  | RIncompatibleInstantiation x -> spf "some incompatible instantiation of `%s`" x
+  | RSpreadOf d -> spf "spread of %s" (string_of_desc d)
+  | RObjectPatternRestProp -> "rest of object pattern"
+  | RArrayPatternRestProp -> "rest of array pattern"
+
+  | RReactElement x ->
+    (match x with
+    | Some x -> spf "React element `%s`" x
+    | None -> "React element")
+  | RReactClass -> "React class"
+  | RReactComponent -> "React component"
+  | RReactStatics -> "statics of React class"
+  | RReactDefaultProps -> "default props of React component"
+  | RReactState -> "state of React component"
+  | RReactComponentProps -> "props of React component"
+  | RReactElementProps x -> spf "props of React element `%s`" x
+  | RReactPropTypes -> "propTypes of React component"
+  | RPropTypeArray -> "array"
+  | RPropTypeFunc -> "func"
+  | RPropTypeObject -> "object"
+  | RPropTypeArrayOf -> "arrayOf"
+  | RPropTypeInstanceOf -> "instanceOf"
+  | RPropTypeObjectOf -> "objectOf"
+  | RPropTypeOneOf -> "oneOf"
+  | RPropTypeOneOfType -> "oneOfType"
+  | RPropTypeShape -> "shape"
+  | RPropTypeFbt -> "Fbd"
+
 let string_of_reason r =
   let spos = string_of_loc (loc_of_reason r) in
-  let desc = r.desc in
+  let desc = string_of_desc r.desc in
   if spos = ""
   then desc
   else (
@@ -224,12 +503,18 @@ let string_of_reason r =
 let json_of_reason ?(strip_root=None) r = Hh_json.(
   JSON_Object [
     "pos", json_of_loc ~strip_root (loc_of_reason r);
-    "desc", JSON_String r.desc
+    "desc", JSON_String (string_of_desc r.desc)
   ]
 )
 
 let dump_reason r =
-  spf "%s: %S" (string_of_loc (loc_of_reason r)) r.desc
+  spf "%s: %S%s"
+    (string_of_loc (loc_of_reason r))
+    (string_of_desc r.desc)
+    begin match r.test_id with
+    | Some n -> spf " (test %d)" n
+    | None -> ""
+    end
 
 let desc_of_reason r =
   r.desc
@@ -252,30 +537,16 @@ let is_internal_module_name name =
 let internal_pattern_name loc =
   spf ".$pattern__%s" (string_of_loc loc)
 
-let typeparam_prefix s =
-  spf "type parameter%s" s
-
-let has_typeparam_prefix s =
-  string_starts_with s "type parameter"
-
-let thistype_desc = "`this` type"
-let existential_desc = "existential"
-
 (* Instantiable reasons identify tvars that are created for the purpose of
    instantiation: they are fresh rather than shared, and should become types
    that flow to them. We assume these characteristics when performing
    speculative matching (even though we don't yet enforce them). *)
 let is_instantiable_reason r =
-  let desc = desc_of_reason r in
-  has_typeparam_prefix desc
-  || desc = thistype_desc
-  || desc = existential_desc
-
-let method_call_prefix name =
-  spf "call of method `%s`" name
-
-let is_method_call_reason name reason =
-  desc_of_reason reason = method_call_prefix name
+  match desc_of_reason r with
+  | RTypeParam _
+  | RThisType
+  | RExistential -> true
+  | _ -> false
 
 (* TODO: Property accesses create unresolved tvars to hold results, even when
    the object(s) on which the property accesses happen may be resolved. This can
@@ -292,14 +563,21 @@ let is_method_call_reason name reason =
 
    Then the types of Tags.ACTION_FOO and Tags.ACTION_BAR are assumed to be 0->1.
 *)
-let is_constant_property_reason =
-  let property_prefix = "property `" in
-  let prop_start = String.length property_prefix + 1 in
-  fun r ->
-    let desc = desc_of_reason r in
-    string_starts_with desc property_prefix &&
-      let prop_end = String.index_from desc prop_start '`' in
-      is_not_lowercase desc prop_start prop_end
+let is_constant_property_reason r =
+  match desc_of_reason r with
+  | RProperty (Some x)
+  | RPropertyOf (x,_)
+  | RPropertyIsAString x ->
+    let len = String.length x in
+    if len = 0
+    then false
+    else is_not_lowercase x 0 (len - 1)
+  | _ -> false
+
+let is_method_call_reason x r =
+  match desc_of_reason r with
+  | RMethodCall (Some y) -> x = y
+  | _ -> false
 
 let is_derivable_reason r =
   r.derivable
@@ -307,8 +585,8 @@ let is_derivable_reason r =
 let derivable_reason r =
   { r with derivable = true }
 
-let builtin_reason x =
-  mk_reason x Loc.({ none with source = Some Builtins })
+let builtin_reason desc =
+  mk_reason desc Loc.({ none with source = Some Builtins })
   |> derivable_reason
 
 let is_builtin_reason r =
@@ -320,6 +598,7 @@ let is_lib_reason r =
   | Some Builtins -> true
   | Some SourceFile _ -> false
   | Some JsonFile _ -> false
+  | Some ResourceFile _ -> false
   | None -> false)
 
 let is_blamable_reason r =
@@ -330,24 +609,12 @@ let reasons_overlap r1 r2 =
 
 (* reason transformers: *)
 
-(* returns reason whose description is prefix-extension of original *)
-let prefix_reason prefix reason =
-  mk_reason (spf "%s%s" prefix (desc_of_reason reason))
-    (loc_of_reason reason)
-
-(* returns reason whose description is suffix-extension of original *)
-let suffix_reason suffix reason =
-  mk_reason (spf "%s%s" (desc_of_reason reason) suffix)
-    (loc_of_reason reason)
-
-(* returns reason whose description is prefix+suffix-extension of original *)
-let wrap_reason prefix suffix reason =
-  mk_reason (spf "%s%s%s" prefix (desc_of_reason reason) suffix)
-    (loc_of_reason reason)
-
 (* returns reason with new description and position of original *)
-let replace_reason replacement reason =
-  mk_reason replacement (loc_of_reason reason)
+let replace_reason f r =
+  mk_reason (f (desc_of_reason r)) (loc_of_reason r)
+
+let replace_reason_const desc r =
+  mk_reason desc (loc_of_reason r)
 
 (* returns reason with new location and description of original *)
 let repos_reason loc reason =

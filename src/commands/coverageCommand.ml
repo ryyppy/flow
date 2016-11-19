@@ -39,25 +39,28 @@ let spec = {
         ~doc:"Print paths without the root"
     |> flag "--path" (optional string)
         ~doc:"Specify (fake) path to file when reading data from stdin"
+    |> flag "--respect-pragma" no_arg ~doc:"" (* deprecated *)
+    |> flag "--all" no_arg
+        ~doc:"Ignore absence of @flow pragma"
     |> anon "file" (optional string) ~doc:"[FILE]"
   )
 }
 
-let handle_error ~json (loc, err) strip =
+let handle_error ~json ~pretty (loc, err) strip =
   let loc = strip loc in
   if json
   then (
-    let json = Hh_json.JSON_Object (
-      ("error", Hh_json.JSON_String err) ::
+    let open Hh_json in
+    let json = JSON_Object (
+      ("error", JSON_String err) ::
       ("loc", Reason.json_of_loc loc) ::
       (Errors.deprecated_json_props_of_loc loc)
     ) in
-    output_string stderr ((Hh_json.json_to_string json)^"\n");
+    prerr_endline (json_to_string ~pretty json);
   ) else (
     let loc = Reason.string_of_loc loc in
-    output_string stderr (spf "%s:\n%s\n" loc err);
-  );
-  flush stderr
+    prerr_endlinef "%s:\n%s" loc err;
+  )
 
 let accum_coverage (covered, total) (_loc, is_covered) =
   if is_covered
@@ -132,6 +135,35 @@ let rec split_overlapping_ranges accum = Loc.(function
           (head_loc, is_covered1)::accum,
           (loc2, is_covered2)::rest
 
+        else if loc1._end.offset < loc2._end.offset then
+          (* TODO: Given that at this point we also have loc1.start.offset <
+             loc2.start.offset, it means that range 1 and 2 overlap but don't
+             nest. Ideally, this case should never arise: we should be able to
+             guarantee the invariant that ranges (same as "spans" in
+             common/span.ml) are either disjoint or nest. However, some
+             combination of bugs and incompleteness in statement.ml and
+             parser_flow.ml cause this invariant to be violated. So here we are.
+
+             Split range1, range2, and the overlapping part. Consume the first
+             part of range1, which doesn't overlap. Also consume the overlapping
+             part, which we assume to be small enough (usually, 1 token) to not
+             contain any interesting nested stuff (recall that the overlap is a
+             bug, not a feature), and optimistically consider it covered if
+             range1 or range2 is covered (because the alternative is 1-token
+             islands of uncovered stuff).
+          *)
+          let head_loc = { loc1 with
+            _end = { loc1._end with offset = loc2.start.offset - 1 }
+          } in
+          let overlap_loc = { loc1 with
+            start = loc2.start
+          } in
+          let tail_loc = { loc2 with
+            start = { loc2.start with offset = loc1._end.offset + 1 }
+          } in
+          (head_loc, is_covered1)::(overlap_loc, is_covered1 || is_covered2)::accum,
+          (tail_loc, is_covered2)::rest
+
         else
           (* range 2 is in the middle of range 1, so split range 1 and consume
              the first part, which doesn't overlap, and then recurse on
@@ -153,53 +185,75 @@ let rec split_overlapping_ranges accum = Loc.(function
       split_overlapping_ranges accum todo
 )
 
-let handle_response ~json ~color ~debug (types : (Loc.t * bool) list) content =
-  if debug then List.iter debug_range types;
+let handle_response ~json ~pretty ~color ~debug (types : (Loc.t * bool) list) content =
+  if color && json then
+    prerr_endline "Error: --color and --json flags cannot be used together"
+  else if debug && json then
+    prerr_endline "Error: --debug and --json flags cannot be used together"
+  else (
+    if debug then List.iter debug_range types;
 
-  begin if color then
-    let types = split_overlapping_ranges [] types |> List.rev in
-    let colors, _ = colorize_file content 0 [] types in
-    Tty.cprint (List.rev colors);
-    print_endline ""
-  end;
+    begin if color then
+      let types = split_overlapping_ranges [] types |> List.rev in
+      let colors, _ = colorize_file content 0 [] types in
+      Tty.cprint (List.rev colors);
+      print_endline ""
+    end;
 
-  let covered, total = List.fold_left accum_coverage (0, 0) types in
-  let percent = (float_of_int covered /. float_of_int total) *. 100. in
+    let covered, total = List.fold_left accum_coverage (0, 0) types in
+    let percent = if total = 0 then 100. else (float_of_int covered /. float_of_int total) *. 100. in
 
-  if json then
-    let uncovered_locs = types
-      |> List.filter (fun (_, is_covered) -> not is_covered)
-      |> List.map (fun (loc, _) -> loc)
-    in
-    let open Hh_json in
-    JSON_Object [
-      "expressions", JSON_Object [
-        "covered_count", int_ covered;
-        "uncovered_count", int_ (total - covered);
-        "uncovered_locs", JSON_Array (uncovered_locs |> List.map Reason.json_of_loc);
-      ];
-    ]
-    |> json_to_string
-    |> print_endline
-  else
-    Utils_js.print_endlinef
-      "Covered: %0.2f%% (%d of %d expressions)\n" percent covered total
+    if json then
+      let uncovered_locs = types
+        |> List.filter (fun (_, is_covered) -> not is_covered)
+        |> List.map (fun (loc, _) -> loc)
+      in
+      let open Hh_json in
+      JSON_Object [
+        "expressions", JSON_Object [
+          "covered_count", int_ covered;
+          "uncovered_count", int_ (total - covered);
+          "uncovered_locs", JSON_Array (uncovered_locs |> List.map Reason.json_of_loc);
+        ];
+      ]
+      |> json_to_string ~pretty
+      |> print_endline
+    else
+      Utils_js.print_endlinef
+        "Covered: %0.2f%% (%d of %d expressions)\n" percent covered total
+  )
 
-let main option_values root json color debug strip_root path filename () =
+let main
+    option_values root json pretty color debug strip_root path respect_pragma
+    all filename () =
   let file = get_file_from_filename_or_stdin path filename in
   let root = guess_root (
     match root with
     | Some root -> Some root
     | None -> ServerProt.path_of_input file
   ) in
+
+  if not json && all && respect_pragma then prerr_endline
+    "Warning: --all and --respect-pragma cannot be used together. --all wins.";
+
+  (* TODO: --respect-pragma is deprecated. We will soon flip the default. As a
+     transition, --all defaults to enabled. To maintain the current behavior
+     going forward, callers should add --all, which currently is a no-op.
+     Once we flip the default, --respect-pragma will have no effect and will
+     be removed. *)
+  let all = all || not respect_pragma in
+
   let ic, oc = connect option_values root in
-  ServerProt.cmd_to_channel oc (ServerProt.COVERAGE file);
+  ServerProt.cmd_to_channel oc (ServerProt.COVERAGE (file, all));
+
+  (* pretty implies json *)
+  let json = json || pretty in
 
   match (Timeout.input_value ic : ServerProt.coverage_response) with
   | Err err ->
-      handle_error ~json err (relativize strip_root root)
+      handle_error ~json ~pretty err (relativize strip_root root)
   | OK resp ->
       let content = ServerProt.file_input_get_content file in
-      handle_response ~json ~color ~debug resp content
+      handle_response ~json ~pretty ~color ~debug resp content
 
 let command = CommandSpec.command spec main

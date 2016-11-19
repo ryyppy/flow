@@ -86,24 +86,14 @@ function handleSpecialObjectCompare(esprima, flow, env) {
   }
 
   switch (esprima.type) {
-    case "SwitchStatement":
-      // Esprima doesn't support let statements so it doesn't include the
-      // lexical field
-      delete flow.lexical;
-      break;
     case 'TryStatement':
       // The Mozilla spec changed over time. There used to be a "handlers"
       // property with a list of catch clauses. Now there is just a single
       // "handler" property. Esprima still only supports the old spec. Flow
       // follows the new spec
       flow.handlers = flow.handler ? [ flow.handler ] : [];
+      flow.guardedHandlers = [];
       delete flow.handler;
-      break;
-    case 'CatchClause':
-      // Esprima doesn't support the guard property for catch clauses
-      if (!esprima.hasOwnProperty("guard")) {
-        esprima.guard = null;
-      }
       break;
     case 'Identifier':
       if (esprima.optional === undefined) {
@@ -127,21 +117,11 @@ function handleSpecialObjectCompare(esprima, flow, env) {
       esprima.loc = flow.loc;
       break;
     case 'ObjectPattern':
-      // ObjectPattern should contain a list of PropertyPattern nodes, not
-      // Property nodes. These nodes are clearly just patterns and don't
-      // contain a lot of fields that don't make sense in a pattern
       for (var i = 0; i < esprima.properties.length; i++) {
         var prop = esprima.properties[i];
         switch (prop.type) {
           case 'SpreadProperty':
-            prop.type = 'SpreadPropertyPattern';
-            break;
-          case 'Property':
-            prop.type = 'PropertyPattern';
-            prop.pattern = prop.value;
-            delete prop.value;
-            delete prop.kind;
-            delete prop.method;
+            prop.type = 'RestProperty';
             break;
         }
       }
@@ -210,12 +190,15 @@ function handleSpecialObjectCompare(esprima, flow, env) {
       // Esprima has the wrong node type for spread elements in an array pattern
       for (var i = 0; i < esprima.elements.length; i++) {
         if (esprima.elements[i] && esprima.elements[i].type == "SpreadElement") {
-          esprima.elements[i].type = "SpreadElementPattern";
+          esprima.elements[i].type = "RestElement";
         }
       }
       if (!esprima.hasOwnProperty('typeAnnotation')) {
         esprima.typeAnnotation = null;
       }
+      break;
+    case 'ObjectTypeAnnotation':
+      esprima.exact = esprima.exact || false;
       break;
     case 'ObjectTypeProperty':
     case 'ObjectTypeIndexer':
@@ -229,6 +212,35 @@ function handleSpecialObjectCompare(esprima, flow, env) {
     case 'ArrowFunctionExpression':
       esprima.returnType = null;
       esprima.typeParameters = null;
+      break;
+    case 'ImportSpecifier':
+      if (esprima.id != null) {
+        esprima.imported = esprima.id;
+        delete esprima.id;
+      }
+      if (esprima.name != null) {
+        esprima.local = esprima.name;
+      } else {
+        esprima.local = esprima.imported;
+      }
+      delete esprima.name;
+      break;
+    case 'ImportDefaultSpecifier':
+    case 'ImportNamespaceSpecifier':
+      esprima.local = esprima.id;
+      delete esprima.id;
+      break;
+    case 'ExportSpecifier':
+      if (esprima.id != null) {
+        esprima.local = esprima.id;
+        delete esprima.id;
+      }
+      if (esprima.name != null) {
+        esprima.exported = esprima.name;
+      } else {
+        esprima.exported = esprima.local;
+      }
+      delete esprima.name;
       break;
     case 'ExportBatchSpecifier':
       esprima.name = esprima.name || null;
@@ -251,16 +263,77 @@ function handleSpecialObjectCompare(esprima, flow, env) {
     case 'FunctionDeclaration':
     case 'FunctionExpression':
     case 'ArrowFunctionExpression':
-      if (Array.isArray(esprima.defaults)) {
+      // esprima-fb uses a "defaults" array that is parallel to the "params"
+      // array. Flow and modern esprima use AssignmentPatterns within the
+      // params array.
+      if (Array.isArray(esprima.defaults) && Array.isArray(esprima.params)) {
         for (var i = 0; i < esprima.defaults.length; i++) {
-          if (esprima.defaults[i] === undefined) {
-            esprima.defaults[i] = null;
+          var left = esprima.params[i];
+          var right = esprima.defaults[i];
+          if (right !== undefined && right !== null) {
+            var newParam = {
+              type: 'AssignmentPattern',
+              left: left,
+              right: right,
+            };
+            if (left.loc && right.loc) {
+              newParam.loc = {
+                start: {
+                  line: left.loc.start.line,
+                  column: left.loc.start.column,
+                },
+                end: {
+                  line: right.loc.end.line,
+                  column: right.loc.end.column,
+                },
+              };
+              if (left.loc.source) {
+                newParam.loc.source = left.loc.source;
+              }
+            }
+            if (left.range && right.range) {
+              newParam.range = [left.range[0], right.range[1]];
+            }
+            esprima.params[i] = newParam;
           }
         }
+        delete esprima.defaults;
       }
+
+      // esprima-fb uses a "rest" property. Flow and modern esprima use
+      // RestElement within the params array.
+      if ('rest' in esprima) {
+        if (esprima.rest !== undefined && esprima.rest !== null) {
+          var arg = esprima.rest;
+          var rest = {
+            type: 'RestElement',
+            argument: arg,
+          };
+          if (arg.loc) {
+            rest.loc = {
+              start: {
+                line: arg.loc.start.line,
+                column: arg.loc.start.column - 3, // HACKY!
+              },
+              end: arg.loc.end,
+            };
+            if (arg.loc.source) {
+              rest.loc.source = arg.loc.source;
+            }
+          }
+          if (arg.range) {
+            rest.range = [arg.range[0] - 3, arg.range[1]]; // HACKY!
+          }
+          esprima.params.push(rest);
+        }
+        delete esprima.rest;
+      }
+
       if (esprima.async === undefined) {
         esprima.async = false;
       }
+
+      delete flow.predicate;
   }
 
   if (flow && flow.type) {
@@ -269,8 +342,16 @@ function handleSpecialObjectCompare(esprima, flow, env) {
         // Esprima represents JSX children string literals as Literal nodes
         flow.type = "Literal";
         break;
+      case 'ObjectTypeProperty':
+      case 'ObjectTypeIndexer':
+      case 'ClassProperty':
+        delete flow.variance;
+        break;
       case 'DeclareModule':
         delete flow.kind;
+        break;
+      case 'DeclareFunction':
+        delete flow.predicate;
         break;
     }
   }

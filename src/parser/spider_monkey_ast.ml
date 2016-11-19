@@ -14,12 +14,7 @@
  *)
 
 module rec Identifier : sig
-  type t = Loc.t * t'
-  and t' = {
-    name: string;
-    typeAnnotation: Type.annotation option;
-    optional: bool;
-  }
+  type t = Loc.t * string
 end = Identifier
 
 and Literal : sig
@@ -43,21 +38,30 @@ and Literal : sig
     | RegExp of RegExp.t
 end = Literal
 
+and Variance : sig
+  type t = Loc.t * t'
+  and t' = Plus | Minus
+end = Variance
+
 and Type : sig
   module Function : sig
     module Param : sig
       type t = Loc.t * t'
       and t' = {
-        name: Identifier.t;
+        name: Identifier.t option;
         typeAnnotation: Type.t;
         optional: bool;
       }
     end
-
+    module RestParam : sig
+      type t = Loc.t * t'
+      and t' = {
+        argument: Param.t
+      }
+    end
     type t = {
-      params: Param.t list;
+      params: Param.t list * RestParam.t option;
       returnType: Type.t;
-      rest: Param.t option;
       typeParameters: Type.ParameterDeclaration.t option;
     }
   end
@@ -70,15 +74,17 @@ and Type : sig
         optional: bool;
         static: bool;
         _method: bool;
+        variance: Variance.t option;
       }
       type t = Loc.t * t'
     end
     module Indexer: sig
       type t' = {
-        id: Identifier.t;
+        id: Identifier.t option;
         key: Type.t;
         value: Type.t;
         static: bool;
+        variance: Variance.t option;
       }
       and t = Loc.t * t'
     end
@@ -90,6 +96,7 @@ and Type : sig
       }
     end
     type t = {
+      exact: bool;
       properties: Property.t list;
       indexers: Indexer.t list;
       callProperties: CallProperty.t list;
@@ -139,6 +146,8 @@ and Type : sig
    * should never be declared nullable, but that check can happen later *)
   and t' =
     | Any
+    | Mixed
+    | Empty
     | Void
     | Null
     | Number
@@ -149,8 +158,8 @@ and Type : sig
     | Object of Object.t
     | Array of t
     | Generic of Generic.t
-    | Union of t list
-    | Intersection of t list
+    | Union of t * t * t list
+    | Intersection of t * t * t list
     | Typeof of t
     | Tuple of t list
     | StringLiteral of StringLiteral.t
@@ -166,9 +175,6 @@ and Type : sig
 
   module ParameterDeclaration : sig
     module TypeParam : sig
-      module Variance : sig
-        type t = Plus | Minus
-      end
       type t = Loc.t * t'
       and t' = {
         name: string;
@@ -188,6 +194,14 @@ and Type : sig
       params: Type.t list;
     }
   end
+
+  module Predicate : sig
+    type t = Loc.t * t'
+    and t' =
+      | Declared of Expression.t
+      | Inferred
+  end
+
 end = Type
 
 and Statement : sig
@@ -243,7 +257,6 @@ and Statement : sig
     type t = {
       discriminant: Expression.t;
       cases: Case.t list;
-      lexical: bool;
     }
   end
   module Return : sig
@@ -261,14 +274,12 @@ and Statement : sig
       type t = Loc.t * t'
       and t' = {
         param: Pattern.t;
-        guard: Expression.t option;
         body: Loc.t * Block.t;
       }
     end
     type t = {
       block: Loc.t * Block.t;
       handler: CatchClause.t option;
-      guardedHandlers: CatchClause.t list;
       finalizer: (Loc.t * Block.t) option;
     }
   end
@@ -331,13 +342,7 @@ and Statement : sig
       left: left;
       right: Expression.t;
       body: Statement.t;
-    }
-  end
-  module Let : sig
-    type assignment = { id: Pattern.t; init: Expression.t option; }
-    type t = {
-      head: assignment list;
-      body: Statement.t;
+      async: bool;
     }
   end
   module Interface : sig
@@ -352,11 +357,14 @@ and Statement : sig
   module DeclareVariable : sig
     type t = {
       id: Identifier.t;
+      typeAnnotation: Type.annotation option;
     }
   end
   module DeclareFunction : sig
     type t = {
       id: Identifier.t;
+      typeAnnotation: Type.annotation;
+      predicate: Type.Predicate.t option;
     }
   end
   module DeclareModule : sig
@@ -374,29 +382,31 @@ and Statement : sig
       kind: module_kind;
     }
   end
-  module ExportDeclaration : sig
-    module Specifier : sig
+  module ExportNamedDeclaration : sig
+    module ExportSpecifier : sig
       type t = Loc.t * t'
       and t' = {
-        id: Identifier.t;
-        name: Identifier.t option;
+        local: Identifier.t;
+        exported: Identifier.t option;
       }
     end
+    type specifier =
+      | ExportSpecifiers of ExportSpecifier.t list
+      | ExportBatchSpecifier of Loc.t * Identifier.t option
+    type t = {
+      declaration: Statement.t option;
+      specifiers: specifier option;
+      source: (Loc.t * Literal.t) option; (* This will always be a string *)
+      exportKind: Statement.exportKind;
+    }
+  end
+  module ExportDefaultDeclaration : sig
     type declaration =
       | Declaration of Statement.t
       | Expression of Expression.t
-    type specifier =
-      | ExportSpecifiers of Specifier.t list
-      | ExportBatchSpecifier of Loc.t * Identifier.t option
-    type exportKind =
-      | ExportType
-      | ExportValue
     type t = {
-      default: bool;
-      declaration: declaration option;
-      specifiers: specifier option;
-      source: (Loc.t * Literal.t) option; (* This will always be a string *)
-      exportKind: exportKind;
+      declaration: declaration;
+      exportKind: Statement.exportKind;
     }
   end
   module DeclareExportDeclaration : sig
@@ -419,7 +429,7 @@ and Statement : sig
     type t = {
       default: bool;
       declaration: declaration option;
-      specifiers: ExportDeclaration.specifier option;
+      specifiers: ExportNamedDeclaration.specifier option;
       source: (Loc.t * Literal.t) option; (* This will always be a string *)
     }
   end
@@ -455,6 +465,10 @@ and Statement : sig
     }
   end
 
+  type exportKind =
+    | ExportType
+    | ExportValue
+
   type t = Loc.t * t'
   and t' =
     | Empty
@@ -475,7 +489,6 @@ and Statement : sig
     | For of For.t
     | ForIn of ForIn.t
     | ForOf of ForOf.t
-    | Let of Let.t
     | Debugger
     | FunctionDeclaration of Function.t
     | VariableDeclaration of VariableDeclaration.t
@@ -487,7 +500,8 @@ and Statement : sig
     | DeclareModule of DeclareModule.t
     | DeclareModuleExports of Type.annotation
     | DeclareExportDeclaration of DeclareExportDeclaration.t
-    | ExportDeclaration of ExportDeclaration.t
+    | ExportNamedDeclaration of ExportNamedDeclaration.t
+    | ExportDefaultDeclaration of ExportDefaultDeclaration.t
     | ImportDeclaration of ImportDeclaration.t
 end = Statement
 
@@ -713,22 +727,23 @@ and Expression : sig
       filter: Expression.t option;
     }
   end
-  module Let : sig
-    type t = {
-      head: Statement.Let.assignment list;
-      body: Expression.t;
-    }
-  end
   module TypeCast : sig
     type t = {
       expression: Expression.t;
       typeAnnotation: Type.annotation;
     }
   end
+  module MetaProperty : sig
+    type t = {
+      meta: Identifier.t;
+      property: Identifier.t;
+    }
+  end
 
   type t = Loc.t * t'
   and t' =
     | This
+    | Super
     | Array of Array.t
     | Object of Object.t
     | Function of Function.t
@@ -746,7 +761,6 @@ and Expression : sig
     | Yield of Yield.t
     | Comprehension of Comprehension.t
     | Generator of Generator.t
-    | Let of Let.t
     | Identifier of Identifier.t
     | Literal of Literal.t
     | TemplateLiteral of TemplateLiteral.t
@@ -754,6 +768,7 @@ and Expression : sig
     | JSXElement of JSX.element
     | Class of Class.t
     | TypeCast of TypeCast.t
+    | MetaProperty of MetaProperty.t
 end = Expression
 
 and JSX : sig
@@ -873,7 +888,7 @@ and Pattern : sig
         shorthand: bool;
       }
     end
-    module SpreadProperty : sig
+    module RestProperty : sig
       type t = Loc.t * t'
       and t' = {
         argument: Pattern.t;
@@ -881,14 +896,14 @@ and Pattern : sig
     end
     type property =
       | Property of Property.t
-      | SpreadProperty of SpreadProperty.t
+      | RestProperty of RestProperty.t
     type t = {
       properties: property list;
       typeAnnotation: Type.annotation option;
     }
   end
   module Array : sig
-    module SpreadElement : sig
+    module RestElement : sig
       type t = Loc.t * t'
       and t' = {
         argument: Pattern.t;
@@ -896,7 +911,7 @@ and Pattern : sig
     end
     type element =
       | Element of Pattern.t
-      | Spread of SpreadElement.t
+      | RestElement of RestElement.t
     type t = {
       elements: element option list;
       typeAnnotation: Type.annotation option;
@@ -906,6 +921,13 @@ and Pattern : sig
     type t = {
       left: Pattern.t;
       right: Expression.t;
+    }
+  end
+  module Identifier : sig
+    type t = {
+      name: Identifier.t;
+      typeAnnotation: Type.annotation option;
+      optional: bool;
     }
   end
   type t = Loc.t * t'
@@ -947,6 +969,7 @@ and Class : sig
       value: Expression.t option;
       typeAnnotation: Type.annotation option;
       static: bool;
+      variance: Variance.t option;
     }
   end
   module Implements : sig
@@ -977,18 +1000,22 @@ and Class : sig
 end = Class
 
 and Function : sig
+  module RestElement : sig
+    type t = Loc.t * t'
+    and t' = {
+      argument: Pattern.t;
+    }
+  end
   type body =
     | BodyBlock of (Loc.t * Statement.Block.t)
     | BodyExpression of Expression.t
   type t = {
     id: Identifier.t option;
-    params: Pattern.t list;
-    defaults: Expression.t option list;
-    rest: Identifier.t option;
+    params: Pattern.t list * RestElement.t option;
     body: body;
     async: bool;
     generator: bool;
-    predicate: bool;
+    predicate: Type.Predicate.t option;
     expression: bool;
     returnType: Type.annotation option;
     typeParameters: Type.ParameterDeclaration.t option;

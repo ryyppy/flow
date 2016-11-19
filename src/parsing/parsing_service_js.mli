@@ -18,14 +18,20 @@ type types_mode =
 type result =
   | Parse_ok of Spider_monkey_ast.program
   | Parse_err of Errors.ErrorSet.t
-  | Parse_skip
+  | Parse_skip of parse_skip_reason
+
+and parse_skip_reason =
+  | Skip_resource_file
+  | Skip_non_flow_file
 
 (* results of parse job, returned by parse and reparse *)
-type results =
-  FilenameSet.t *                 (* successfully parsed files *)
-  (filename * Docblock.t) list *  (* list of skipped files *)
-  (filename * Docblock.t) list *  (* list of failed files *)
-  Errors.ErrorSet.t list       (* parallel list of error sets *)
+type results = {
+  parse_ok: FilenameSet.t;                   (* successfully parsed files *)
+  parse_skips: (filename * Docblock.t) list; (* list of skipped files *)
+  parse_fails: (filename * Docblock.t) list; (* list of failed files *)
+  parse_errors: Errors.ErrorSet.t list;      (* parallel list of error sets *)
+  parse_resource_files: FilenameSet.t;       (* resource files *)
+}
 
 (* initial parsing pass: success/failure info is returned,
  * asts are made available via get_ast_unsafe. *)
@@ -38,15 +44,32 @@ val parse:
   (unit -> filename list) ->    (* delivers buckets of filenames *)
   results                       (* job results, not asts *)
 
+(* Use default values for the various settings that parse takes. Each one can be overridden
+individually *)
+val parse_with_defaults:
+  ?types_mode: types_mode ->
+  ?use_strict: bool ->
+  Options.t ->
+  Worker.t list option ->
+  (unit -> filename list) ->
+  results
+
 (* for non-initial passes: updates asts for passed file set. *)
 val reparse:
   types_mode: types_mode ->
   use_strict: bool ->
   profile: bool ->
   max_header_tokens: int ->
+  options: Options.t ->
   Worker.t list option ->   (* Some=parallel, None=serial *)
   FilenameSet.t ->          (* filenames to reparse *)
   FilenameSet.t * results   (* modified files and job results *)
+
+val reparse_with_defaults:
+  Options.t ->
+  Worker.t list option ->
+  FilenameSet.t ->
+  FilenameSet.t * results
 
 val has_ast: filename -> bool
 
@@ -54,6 +77,8 @@ val has_ast: filename -> bool
 val get_ast_unsafe: filename -> Spider_monkey_ast.program
 val get_ast_and_info_unsafe:
   filename -> Spider_monkey_ast.program * Docblock.t
+
+val get_ast: filename -> Spider_monkey_ast.program option
 
 (* remove asts for given file set. *)
 val remove_asts: FilenameSet.t -> unit
@@ -81,3 +106,9 @@ val do_parse:
   string ->                 (* contents of the file *)
   filename ->               (* filename *)
   result
+
+(* Utility to create the `next` parameter that `parse` requires *)
+val next_of_filename_set:
+  Worker.t list option ->
+  FilenameSet.t ->
+  (unit -> filename list)

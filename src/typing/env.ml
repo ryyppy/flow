@@ -136,6 +136,12 @@ let iter_local_scopes f =
 let clone_env scopes =
   List.map Scope.clone scopes
 
+let var_scope_kind () =
+  let scope = peek_var_scope () in
+  match scope.kind with
+  | VarScope k -> k
+  | _ -> assert_false "peek_var_scope returns a VarScope"
+
 (* true iff scope is var scope with the given kind *)
 let is_func_kind k scope =
   match scope.kind with
@@ -143,10 +149,14 @@ let is_func_kind k scope =
   | _ -> false
 
 let in_async_scope () =
-  is_func_kind Async (peek_var_scope ())
+  match var_scope_kind () with
+  | Async | AsyncGenerator -> true
+  | _ -> false
 
 let in_generator_scope () =
-  is_func_kind Generator (peek_var_scope ())
+  match var_scope_kind () with
+  | Generator | AsyncGenerator -> true
+  | _ -> false
 
 let in_predicate_scope () =
   is_func_kind Predicate (peek_var_scope ())
@@ -325,9 +335,9 @@ let global_lexicals = [
 let cache_global cx name reason global_scope =
   let t =
     if List.mem name global_any
-    then AnyT.t
+    then AnyT.at (loc_of_reason reason)
     else (if List.mem name global_lexicals
-    then MixedT (reason_of_string "global object", Mixed_everything)
+    then ObjProtoT (replace_reason_const (RCustom "global object") reason)
     else Flow_js.get_builtin cx name reason)
   in
   let loc = loc_of_reason reason in
@@ -398,13 +408,11 @@ let find_refi_in_var_scope key =
 (* helpers *)
 
 let binding_error msg cx name entry reason =
-  FlowError.add_extended_error cx [
-    loc_of_reason reason, [name; msg];
-    Entry.loc entry, [spf "%s %s" (Entry.string_of_kind entry) name]
-  ]
+  FlowError.(add_output cx
+    (EBindingError (msg, reason, name, entry)))
 
 let already_bound_error =
-  binding_error "name is already bound"
+  binding_error FlowError.ENameAlreadyBound
 
 (* initialization of entries happens during a preliminary pass through a
    scoped region of the AST (dynamic for hoisted things, lexical for
@@ -490,6 +498,10 @@ let bind_const ?(state=State.Undeclared) cx name t r =
   let loc = loc_of_reason r in
   bind_entry cx name (Entry.new_const t ~loc ~state) r
 
+let bind_import cx name t r =
+  let loc = loc_of_reason r in
+  bind_entry cx name (Entry.new_import t ~loc) r
+
 (* bind implicit const entry *)
 let bind_implicit_const ?(state=State.Undeclared) kind cx name t r =
   let loc = loc_of_reason r in
@@ -508,11 +520,10 @@ let bind_declare_fun =
 
   let update_type seen_t new_t = match seen_t with
   | IntersectionT (reason, rep) ->
-    let seen_ts = InterRep.members rep in
-    IntersectionT (reason, InterRep.make (seen_ts @ [new_t]))
+    IntersectionT (reason, InterRep.append [new_t] rep)
   | _ ->
-    let reason = replace_reason "intersection type" (reason_of_t seen_t) in
-    IntersectionT (reason, InterRep.make [seen_t; new_t])
+    let reason = replace_reason_const RIntersectionType (reason_of_t seen_t) in
+    IntersectionT (reason, InterRep.make seen_t new_t [])
   in
 
   fun cx name t reason ->
@@ -669,11 +680,11 @@ let value_entry_types ?(lookup_mode=ForValue) scope = Entry.(function
     ->
     let uninit desc = VoidT.make (mk_reason desc value_declare_loc) in
     let specific = if state = State.Declared
-      then uninit "uninitialized variable"
+      then uninit (RCustom "uninitialized variable")
       else (* State.MaybeInitialized *)
-        let desc = "possibly uninitialized variable" in
-        let ts = [uninit desc; specific] in
-        UnionT (mk_reason desc value_declare_loc, UnionRep.make ts)
+        let desc = (RCustom "possibly uninitialized variable") in
+        let rep = UnionRep.make (uninit desc) specific [] in
+        UnionT (mk_reason desc value_declare_loc, rep)
     in
     specific, general
 
@@ -684,9 +695,7 @@ let value_entry_types ?(lookup_mode=ForValue) scope = Entry.(function
 (* emit tdz error for value entry *)
 let tdz_error cx name reason v = Entry.(
   (* second clause of error message is due to switch scopes *)
-  let msg = spf "%s referenced before declaration, \
-                  or after skipped declaration"
-    (string_of_value_kind v.Entry.kind) in
+  let msg = FlowError.EReferencedBeforeDeclaration in
   binding_error msg cx name (Value v) reason
 )
 
@@ -703,7 +712,7 @@ let read_entry ~lookup_mode ~specific cx name reason =
   Entry.(match entry with
 
   | Type _ when lookup_mode != ForType ->
-    let msg = "type referenced from value position" in
+    let msg = FlowError.ETypeInValuePosition in
     binding_error msg cx name entry reason;
     AnyT.at (Entry.loc entry)
 
@@ -802,7 +811,12 @@ let update_var op cx name specific reason =
   | Value ({ Entry.kind = Let _ | Var; _ } as v) ->
     let change = scope.id, name, op in
     Changeset.change_var change;
-    Flow_js.flow_t cx (specific, Entry.general_of_value v);
+    let use_op = match op with
+    | Changeset.Write -> UnknownUse
+    | Changeset.Refine -> Internal Refinement
+    | Changeset.Read -> UnknownUse (* this is impossible *)
+    in
+    Flow_js.flow cx (specific, UseT (use_op, Entry.general_of_value v));
     (* add updated entry *)
     let update = Entry.Value {
       v with Entry.
@@ -812,20 +826,21 @@ let update_var op cx name specific reason =
     } in
     Scope.add_entry name update scope;
     Some change
-  | Value ({ Entry.kind = Const ConstVarBinding; _ } as v) ->
-    let msg = spf "%s cannot be reassigned"
-      Entry.(string_of_value_kind (kind_of_value v)) in
+  | Value { Entry.kind = Const ConstVarBinding; _ } ->
+    let msg = FlowError.EConstReassigned in
     binding_error msg cx name entry reason;
     None
-  | Value ({ Entry.kind = Const ConstParamBinding; _ } as v) ->
+  | Value { Entry.kind = Const ConstImportBinding; _; } ->
+    let msg = FlowError.EImportReassigned in
+    binding_error msg cx name entry reason;
+    None
+  | Value { Entry.kind = Const ConstParamBinding; _ } ->
     (* TODO: remove extra info when surface syntax is added *)
-    let msg = spf "%s cannot be reassigned \
-      (see experimental.const_params=true in .flowconfig)"
-      Entry.(string_of_value_kind (kind_of_value v)) in
+    let msg = FlowError.EConstParamReassigned in
     binding_error msg cx name entry reason;
     None
   | Type _ ->
-    let msg = "type alias referenced from value position" in
+    let msg = FlowError.ETypeAliasInValuePosition in
     binding_error msg cx name entry reason;
     None
   )
@@ -843,7 +858,8 @@ let refine_const cx name specific reason =
   | Value ({ Entry.kind = Const _; _ } as v) ->
     let change = scope.id, name, Changeset.Refine in
     Changeset.change_var change;
-    Flow_js.flow_t cx (specific, Entry.general_of_value v);
+    let general = Entry.general_of_value v in
+    Flow_js.flow cx (specific, UseT (Internal Refinement, general));
     let update = Value {
       v with value_state = State.Initialized; specific
     } in
@@ -900,8 +916,8 @@ let merge_env =
 
   let create_union cx reason l1 l2 =
     Flow_js.mk_tvar_where cx reason (fun tvar ->
-      Flow_js.flow_t cx (l1, tvar);
-      Flow_js.flow_t cx (l2, tvar);
+      Flow_js.flow cx (l1, UseT (Internal MergeEnv, tvar));
+      Flow_js.flow cx (l2, UseT (Internal MergeEnv, tvar));
     )
   in
 
@@ -917,9 +933,9 @@ let merge_env =
     then general0
     (* general case *)
     else
-      let reason = replace_reason name reason in
+      let reason = replace_reason_const (RCustom name) reason in
       let tvar = create_union cx reason specific1 specific2 in
-      Flow_js.flow_t cx (tvar, general0);
+      Flow_js.flow cx (tvar, UseT (Internal MergeEnv, general0));
       tvar
   in
 
@@ -1012,7 +1028,7 @@ let merge_env =
     (* refi was introduced in both children *)
     | None, Some child1, Some child2 ->
       let name = Key.string_of_key key in
-      let reason = replace_reason name reason in
+      let reason = replace_reason_const (RCustom name) reason in
       let refined = create_union cx reason child1.refined child2.refined in
       let original = create_union cx reason child1.original child2.original in
       let refi_loc = loc_of_reason reason in
@@ -1057,7 +1073,7 @@ let copy_env =
     (* for values, flow env2's specific type into env1's specific type *)
     | Some Value v1, Some Value v2 ->
       (* flow child2's specific type to child1 in place *)
-      Flow_js.flow_t cx (v2.specific, v1.specific);
+      Flow_js.flow cx (v2.specific, UseT (Internal CopyEnv, v1.specific));
       (* udpate state *)
       if v1.value_state < State.Initialized
         && v2.value_state >= State.MaybeInitialized
@@ -1104,7 +1120,7 @@ let copy_env =
     match get scope0, get scope1 with
     (* flow child refi's type back to parent *)
     | Some { refined = t1; _ }, Some { refined = t2; _ } ->
-      Flow_js.flow_t cx (t2, t1)
+      Flow_js.flow cx (t2, UseT (Internal CopyEnv, t1))
     (* uneven cases imply refi was added after splitting: remove *)
     | _ ->
       ()
@@ -1130,10 +1146,10 @@ let widen_env =
     if specific = general
     then None
     else
-      let reason = replace_reason name reason in
+      let reason = replace_reason_const (RCustom name) reason in
       let tvar = Flow_js.mk_tvar cx reason in
-      Flow_js.flow_t cx (specific, tvar);
-      Flow_js.flow_t cx (tvar, general);
+      Flow_js.flow cx (specific, UseT (Internal WidenEnv, tvar));
+      Flow_js.flow cx (tvar, UseT (Internal WidenEnv, general));
       Some tvar
   in
 
@@ -1265,12 +1281,12 @@ let refine_with_preds cx reason preds orig_types =
       let refi_reason =
         let pred_str = string_of_predicate pred in
         let rstr = spf "identifier %s when %s" name pred_str in
-        replace_reason rstr reason
+        replace_reason_const (RCustom rstr) reason
       in
       Entry.(match find_entry cx name reason with
       | _, Value v ->
         let orig_type =
-          let get_reason = replace_reason (spf "identifier %s" name) reason in
+          let get_reason = replace_reason_const (RIdentifier name) reason in
           get_var cx name get_reason
         in
         let refi_type = mk_refi_type orig_type pred refi_reason in
@@ -1292,7 +1308,7 @@ let refine_with_preds cx reason preds orig_types =
         let pred_str = string_of_predicate pred in
         let rstr = spf "expression %s when %s"
           (Key.string_of_key key) pred_str in
-        replace_reason rstr reason
+        replace_reason_const (RCustom rstr) reason
       in
       let orig_type = Key_map.find_unsafe key orig_types in
       let refi_type = mk_refi_type orig_type pred refi_reason in

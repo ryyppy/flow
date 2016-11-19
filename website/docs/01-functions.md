@@ -3,7 +3,7 @@ id: functions
 title: Functions
 permalink: /docs/functions.html
 prev: objects.html
-next: nullable-types.html
+next: variance.html
 ---
 
 Functions are ubiquitous in JavaScript. As expected, Flow propagates types through function calls.
@@ -82,7 +82,7 @@ function takesANumber(x: number) {}
 takesANumber() // Error: undefined passed to x, which expects a number
 ```
 
-However if the missing parameter accepts values of type `void` then there will
+However, if the missing parameter accepts values of type `void` then there will
 be no error.
 
 ```js +line_numbers

@@ -4,7 +4,7 @@
 id: react
 title: React
 permalink: /docs/react.html
-prev: declarations.html
+prev: utility-types.html
 ---
 */
 
@@ -22,7 +22,7 @@ const ReactDOM = require("react-dom");
 
   React provides a few different ways to define components:
 
-  * [the `React.createClass` factory](#the-react-createclass-factory),
+  * [the `React.createClass` factory](#the-reactcreateclass-factory),
   * [`React.Component` subclasses](#defining-components-as-reactcomponent-subclasses),
   * and [stateless functional components](#stateless-functional-components)
 
@@ -103,6 +103,7 @@ const Counter = React.createClass({
     });
   },
   decrement() {
+    // Note: Typo below is intentional
     // $ExpectError(todo: improve this error position)
     this.setState({
       valu: this.state.value - 1,
@@ -130,13 +131,14 @@ const Counter = React.createClass({
   and more. With class-based components, you can specify the components'
   props, default props, and state using Flow's annotation syntax.
 */
+type Props = {
+  title: string,
+  visited: boolean,
+  onClick: () => void,
+};
 
 class Button extends React.Component {
-  props: {
-    title: string,
-    visited: boolean,
-    onClick: () => void,
-  };
+  props: Props;
 
   state: {
     display: 'static' | 'hover' | 'active';
@@ -148,7 +150,7 @@ class Button extends React.Component {
   onMouseLeave: () => void;
   onMouseDown: () => void;
 
-  constructor(props) {
+  constructor(props: Props) {
     super(props);
     this.state = {
       display: 'static',

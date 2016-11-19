@@ -60,6 +60,12 @@ defaults.js:9
 
 defaults.js:9
   9:   (q:void);
+        ^ null. This type is incompatible with
+  9:   (q:void);
+          ^^^^ undefined
+
+defaults.js:9
+  9:   (q:void);
         ^ number. This type is incompatible with
   9:   (q:void);
           ^^^^ undefined
@@ -67,14 +73,6 @@ defaults.js:9
 defaults.js:9
   9:   (q:void);
         ^ string. This type is incompatible with
-  9:   (q:void);
-          ^^^^ undefined
-
-defaults.js:14
- 14: obj_prop_fun({p:{q:null}}); // ok, provides add'l lower bound
-     ^^^^^^^^^^^^^^^^^^^^^^^^^^ function call
-  9:   (q:void);
-        ^ null. This type is incompatible with
   9:   (q:void);
           ^^^^ undefined
 
@@ -86,6 +84,12 @@ defaults.js:23
 
 defaults.js:23
  23:   (q:void);
+        ^ null. This type is incompatible with
+ 23:   (q:void);
+          ^^^^ undefined
+
+defaults.js:23
+ 23:   (q:void);
         ^ number. This type is incompatible with
  23:   (q:void);
           ^^^^ undefined
@@ -96,13 +100,11 @@ defaults.js:23
  23:   (q:void);
           ^^^^ undefined
 
-defaults.js:28
- 28: obj_prop_var({p:{q:null}}); // ok, provides add'l lower bound
-     ^^^^^^^^^^^^^^^^^^^^^^^^^^ function call
- 23:   (q:void);
-        ^ null. This type is incompatible with
- 23:   (q:void);
-          ^^^^ undefined
+defaults.js:35
+ 35:   (o.r:void);
+        ^^^ null. This type is incompatible with
+ 35:   (o.r:void);
+            ^^^^ undefined
 
 defaults.js:35
  35:   (o.r:void);
@@ -113,14 +115,6 @@ defaults.js:35
 defaults.js:35
  35:   (o.r:void);
         ^^^ string. This type is incompatible with
- 35:   (o.r:void);
-            ^^^^ undefined
-
-defaults.js:40
- 40: obj_rest({p:{q:0,r:null}});
-     ^^^^^^^^^^^^^^^^^^^^^^^^^^ function call
- 35:   (o.r:void);
-        ^^^ null. This type is incompatible with
  35:   (o.r:void);
             ^^^^ undefined
 
@@ -168,7 +162,7 @@ defaults.js:61
 
 defaults.js:62
  62: function obj_rest_err({...o}=0) {} // error: expected object instead of number
-                            ^^^^ object pattern spread property. Expected object instead of
+                            ^^^^ rest of object pattern. Expected object instead of
  62: function obj_rest_err({...o}=0) {} // error: expected object instead of number
                                   ^ number
 
@@ -256,27 +250,23 @@ destructuring.js:4
 
 destructuring.js:10
  10: ({n: obj.x} = {n:3});
-          ^^^^^ unsupported destructuring
+          ^^^^^ unsupported expression pattern in destructuring
 
 destructuring.js:11
  11: [obj.x] = ['foo'];
-      ^^^^^ unsupported destructuring
+      ^^^^^ unsupported expression pattern in destructuring
 
-destructuring.js:15
- 15:     b = z;
-             ^ identifier `z`. Could not resolve name
-
-destructuring.js:18
- 18: foo({p:0, z:[1,2]});
-     ^^^^^^^^^^^^^^^^^^^ function call
+destructuring.js:14
  14:     a = p;
              ^ number. This type is incompatible with
   1: declare var a:string;
                    ^^^^^^ string
 
-destructuring.js:18
- 18: foo({p:0, z:[1,2]});
-     ^^^^^^^^^^^^^^^^^^^ function call
+destructuring.js:15
+ 15:     b = z;
+             ^ identifier `z`. Could not resolve name
+
+destructuring.js:16
  16:     c = r;
              ^ number. This type is incompatible with
   3: declare var c:string;
@@ -306,7 +296,7 @@ destructuring.js:25
  23:     var o:{x: string; y: number;} = z;
                ^^^^^^^^^^^^^^^^^^^^^^^ property `x`. Property not found in
  23:     var o:{x: string; y: number;} = z;
-                                         ^ object pattern spread property
+                                         ^ rest of object pattern
 
 destructuring.js:28
  28: var extend: {x:number; y:string; z: boolean} = {x:0, ...spread};
@@ -316,17 +306,13 @@ destructuring.js:28
 
 destructuring.js:31
  31: qux({a:""});
-     ^^^^^^^^^^^ function call
- 31: qux({a:""});
-            ^^ string. This type is incompatible with
+            ^^ string. This type is incompatible with the expected param type of
  30: function qux(_: {a:number}) { }
                         ^^^^^^ number
 
 destructuring.js:33
  33: corge({b:0});
-     ^^^^^^^^^^^^ function call
- 33: corge({b:0});
-              ^ number. This type is incompatible with
+              ^ number. This type is incompatible with the expected param type of
  32: function corge({b}: {b:string}) { }
                             ^^^^^^ string
 
@@ -386,6 +372,12 @@ destructuring_param.js:5
   5: function g(a, { a }) {
                      ^ Strict mode function may not have duplicate parameter names
 
+eager.js:2
+  2: ({x} = null); // error, property `x` can not be accessed on `null`
+       ^ property `x`. Property cannot be accessed on possibly null value
+  2: ({x} = null); // error, property `x` can not be accessed on `null`
+            ^^^^ null
+
 poly.js:15
  15: function rest_antipattern<T>(...t: T) {} // nonsense
                                         ^ T. rest parameter should have an explicit array type (or type `any`)
@@ -403,4 +395,4 @@ unannotated.js:8
        ^ object literal
 
 
-Found 64 errors
+Found 65 errors

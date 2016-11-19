@@ -1,8 +1,171 @@
+###v0.35.0
+
+Likely to cause new Flow errors:
+* Flow now knows that calling `addEventListener()` with `'click' and 'dblclick'` will pass a `MouseEvent` to the listener. This means you might need to update `foo.addEventListener('click', (e) => bar())` to `foo.addEventListener('click', (e: MouseEvent) => bar())`.
+
+New Features:
+* Better error messages in a bunch of situations
+* flowtype.org/try now has an AST tab that shows the parsed AST of the example
+
+Notable bug fixes:
+* Bindings that come from imports are now treated as const
+* Found and fixed a few situations where Flow was emitting redundant errors
+* Some if statement refinements were sticking around after the if statement in some situations when they should not have.
+
+Misc:
+* Various libdef fixes and improvements
+* Various docs fixes and improvements
+* If `foo` has the typed `mixed`, we now allow `foo.bar` if you check that `foo` is not `null` or `undefined`.
+
+Parser:
+* Better error message if you try to make a class property optional (currently unsupported)
+* Dropped support for `let` statements, which never made it into the spec (thanks [@andreypopp](https://github.com/andreypopp))
+
+###v0.34.0
+
+Likely to cause new Flow errors:
+* Dictionary types (i.e. `{[key: string]: ValueType}`) were previously covariant which proved to be a significant source of unsoundness. Dictionary types are now invariant by default in order to fall into consistency with other collection types. It is possible to opt in to explicit covariance with new syntax: `{+[key: string]: ValueType}`, but note that this is now *enforced* covariance -- which means the dictionary can no longer be written into (only read from). For mutable collections, consider using `Map`/`Set`/etc. Please see this [blog post](https://flowtype.org/blog/2016/10/04/Property-Variance.html) for more information on variance.
+* Object property types are now invariant by default. New syntax allows explicit opt-in to enforced covariance: `type T = {+covariantProp: string}`. Please see this [blog post](https://flowtype.org/blog/2016/10/04/Property-Variance.html) for more information on variance.
+* Object *method* types are now covariant by default. So this: `type T = {covariantMethod(): string}` is the same as `type T = {+covariantMethod: () => string}`. Please see this [blog post](https://flowtype.org/blog/2016/10/04/Property-Variance.html) for more information on variance.
+
+New features:
+* New `empty` type annotation. This is the ["bottom type"](https://en.wikipedia.org/wiki/Bottom_type) which is the type that has no possible values. This is mostly useful for asserting impossible types right now (see [the commit description](https://github.com/facebook/flow/commit/c603505583993aa953904005f91c350f4b65d6bd) for more details).
+* All server commands now have a `--quiet` flag to suppress server-status information that would otherwise be printed to stderr.
+* It's now possible to specify an "@jsx" pragma to override the implicit default of `React.createElement`. See [the commit](https://github.com/facebook/flow/commit/d2930e135f9c34a89a226c2ca36eb4bcab7b59db) message for more details.
+* [async iteration](https://github.com/tc39/proposal-async-iteration) is now Stage 3, so Flow now supports async generators and `for-await-of` statements.
+
+Notable bug fixes:
+* Calling `get-def` and `autocomplete` on specifiers in import statements now works properly and links in to where the specifier is exported in the other file.
+* `Generator.prototype.return` now returns a possibly-unfinished `IteratorResult` object rather than a definitely-done iterator result. See #2589 for more details.
+* Fixed an issue with inferring the proper return-type of iterators coming from a generator with multiple return-types. See #2475 for more details.
+* Fixed an issue where a non-polymorphic class-instance used as a CommonJS export wasn't omitting underscore-prefixed members when the `munge_underscores` config option is set to `true`.
+* Fixed an issue where Flow would previously not consider non-@flow files when re-calculating type dependencies on a change to the filesystem. This caused sporadic issues where Flow might think that a module is missing that actually is not! This is now fixed.
+
+Misc:
+* Significant memory usage optimizations by normalizing common aspects of the many "reason" structures stored in memory to use ocaml variants.
+* Significant memory usage optimization by compressing the contents of the shared heap used by the persistent server.
+* Parser now allows for duplicate properties and accessors in objects per the latest ES spec.
+* Flow parser is now tested against esprima3 tests
+* `yield` expressions no longer evaluate to an optional type. This is unsound, but the inconvenience was so prevalent that we decided to relax the issue for now. See #2080 for more details.
+* Various core libdef updates.
+
+Parser breaking changes:
+* Updated the parser to use the latest `ExportNamedDeclaration` and `ExportDefaultDeclaration` nodes from ESTree rather than the outdated `ExportDeclaration` node.
+* `export default class {}` now correctly emits a `ClassDeclaration` rather than `ClassExpression` per [this estree issue](https://github.com/estree/estree/issues/98).
+* Updated `ExportSpecifier` property names from `id` -> `local` and `name` -> `exported` per the latest ESTree spec.
+* Update `ExportBatchSpecifier` to a `ExportNamespaceSpecifier` node per the latest ESTree spec.
+* Renamed `SpreadElementPattern` -> `RestElement` per the latest ESTree spec.
+* Node-properties of `ObjectPattern` are now named `Property` and `RestProperty` per the latest ESTree spec.
+* Use a `Super` node now instead of an `Identifier` node per the latest ESTree spec.
+* `{ImportNamedSpecifier` and `ImportDefaultSpecifier` nodes now use proper `local` and `remote` property names, per the latest ESTree spec.
+* The `mixed` type annotation is now represented with a special `MixedTypeAnnotation` node (same as Babylon has been for a while).
+* The `NullTypeAnnotation` annotation node is now called `NullLiteralTypeAnnotation` in order to match Babylon.
+
+###v0.33.0
+
+Likely to cause new Flow errors:
+* Its now an error to add `mixed` to `number`
+
+New features:
+* `suppress_comment` now defaults to matching `// $FlowFixMe` if there are no suppress_comments listed in a .flowconfig
+* The Flow server no longer restarts itself when a `package.json` file is changed
+* The Flow server no longer restarts itself if a libdef file is touched, but not actually changed
+* Added support for using Iterables with `Promise.all()` (thanks @vkurchatkin!)
+
+Notable bug fixes:
+* Fixed an issue where some predicates could cause Flow to crash
+* Fixed an issue where we weren't propertly looking things up on `Function.prototype` and `Object.prototype`
+* Fixed an issue where Flow could crash when extracting coverage on empty types
+* Fixed an issue where long paths that are ignored could give a bunch of warnings on Windows
+* Fixed an issue where `flow get-def` wouldn't hop to the location of a type coming through an `import type`
+* Fixed an issue with dictionary types where using an `any`-typed variable as a computed-property lookup results in the wrong property-value type
+* Fixed some issues where Flow wouldn't allow defininition of properties or methods called "static" on classes
+* Fixed an issue where Flow wouldn't permit `throw`s at the toplevel of a module
+* Fixed an issue where adding a file to `[libs]` with an extension not listed in `module.file_exts`, it would previously be silently ignored
+* Fixed an issue where `import * as` on a `declare module.exports: any;` libdef would not result in a module with every possible named export
+* Fixed a parsing issue where `"JSX attributes must only be assigned a non-empty expression"` syntax errors sometimes point to the wrong line
+* Fixed parsing of setter methods with destructured parameters
+* Fixed a parsing issue where it wasn't possible to use `get` or `set` in object short notation
+* Fixed a parsing issue where we previously weren't allowing strings in async method names: `x = { async 123() { await y; } }`
+* Fixed an issue where the parser previously wouldn't recognize the `u` regex flag
+
+Misc:
+* Various built-in libdef improvements
+* Various significant shared memory optimizations
+* When a package.json key is read by Flow during module resolution, don't wrap it in quotes
+* Added parser (but not yet typechecker) support for `new.target`
+* Added `--pretty` flag to all commands that have a `--json` flag
+* Flow now prints an exception instead of segfaulting if there is a heap overflow
+* Only print JSON for `flow coverage` when `--json` is passed (thanks @aackerman!)
+
+Parser breaking changes:
+* Removed 'lexical' property from `SwitchStatement`
+* Removed `guardedHandlers` from `TryStatement`
+* Use `AssignmentPattern` for function param defaults to match ESTree
+* Use `RestElement` for function rest params to match ESTree
+* Fixed the location info for `ExpressionStatement`
+* Fixed the location info for `CallExpression` and `MemberExpression`
+
+###v0.32.1
+
+Notable bug fixes:
+* If Flow runs out of heap space, it now throws an exception instead of segfaulting.
+
+###v0.32.0
+
+Likely to cause new Flow errors:
+* If you check that an object `obj` has a property `foo` that Flow doesn't know about, Flow will now refine `obj.foo` to the type `mixed`. If you then try to use `obj.foo` in an unsafe way (like as a function), you might start seeing errors mentioning `` property `foo` of unknown type ``. The fix is to either fix the type of `obj` to include an optional property `foo`, or to rewrite code like `obj.foo && obj.foo(x)` to `typeof obj.foo === "function" && obj.foo(x)`
+* We've fixed the type of `Array.prototype.find` to reflect the fact that it can return `undefined`
+* We've tightened up the checking of tuple types
+
+
+New Features:
+* New syntax for exact object types: use `{|` and `|}` instead of `{` and `}`. Where `{x: string}` contains at least the property `x`, `{| x: string |}` contains ONLY the property `x`.
+* Flow now watches for `.css`, `.jpg`, `.png`, `.gif`, `.eot`, `.svg`, `.ttf`, `.woff`, `.woff2`, `.mp4` and `.webm` files (this list is not configurable at the moment). We call them resource files. If you require a resource file, you get a `string` (except for `.css` files, for which you get an `Object`). You should still be able to use `module.name_mapper` to map a resource file to a mock, if you prefer.
+* We're starting work on `flow gen-flow-files`, which consumes Flow code and outputs `.flow` files containing only the types exported. It's alpha-level and we're still iterating on it, so use at your own peril!
+
+Notable bug fixes:
+* Fixed a bug where, if a module has a CommonJS export of type `any`, then the types it exported were also given type `any`
+* v0.31.0 contained a regression where arrays and promises required more annotations than they should. This is fixed.
+* Fixed use of tagged unions with intersections and generics.
+* Jump to definition for overridden methods was jumping to the wrong method. This is now fixed.
+* `flow coverage` had a non-termination bug. This is now fixed.
+
+Misc:
+* Lots of improvements to the builtin libdefs! Thanks for all the pull requests!
+
+###v0.31.0
+
+Likely to cause new Flow errors:
+- Fixed an issue where an `any` type could actually prevent errors from showing up in places that actually should surface errors
+- `Array.isArray()` now refines arrays to `Array<mixed>` instead of `Array<any>`
+
+New Features:
+- When the `munge_underscores` option is set, Flow no longer requires annotations on exported classes with munged methods. (thanks [@pvolok](https://github.com/pvolok)!)
+- Added a new "magic" type called `$PropertyType<T, 'x'>`. This utility extracts the type of the property 'x' off of the type T.
+- It is now possible to use leading-`|` and `&` on any type annotation, not just in type aliases
+
+Notable bug fixes:
+- Signficant perf improvements on checking disjoint unions
+- Fixed an issue where `flow start` would sometimes hang on Windows
+- Fixed an issue where `flow get-def` on a react element would always point to the internal react libdef (rather than the component that defines the element)
+- Error messages for builtin types are now more descriptive in more scenarios
+- Fixed the order in which destructured function params were processed. This previously caused issues with variable references within the destructuring
+- Error messages for union type errors now point to more helpful locations in some cases
+- Fixed a long-standing confusing error message blaming property accesses on the "global object" (when the global object isn't actually involved at all)
+- Improved error message when trying to import a named export from a module that only has a default export
+- Fixed an issue where `Promise.resolve(undefined)` would not always error as it should
+- Fixed an issue where async functions that return void do not properly enforce their return type
+- Fixed an issue where aliased object types may not error when an invalid property is accessed on them
+- Fix `flow coverage` when reporting coverage on empty files
+- Printed types in some circumstances (autocomplete, type-at-pos, etc) are now capped on size to prevent overflows in tools that consume them. When the size overflows the cap, `...` will be printed as an overflow placeholder
+- Various built-in libdef updates
+
 ###v0.30.0
 
 Likely to cause new Flow errors:
 - Fixed `React.PureComponent`'s definition, so previously missed errors are now reported
-- The definition of `console` in the build-in libdef has been filled out and is no longer `any`. 
+- The definition of `console` in the build-in libdef has been filled out and is no longer `any`.
 
 New Features:
 - From now on we're going to start publishing Windows builds with each release. Please report any issues you have!

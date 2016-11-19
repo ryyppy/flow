@@ -6,8 +6,19 @@ import {tmpdir} from 'os';
 import {basename, dirname, extname, join, sep as dir_sep} from 'path';
 import {format} from 'util';
 
-import {appendFile, exec, execManual, mkdirp, readdir, readFile, writeFile} from '../async';
-import {testsDir} from '../constants';
+import {
+  appendFile,
+  exec,
+  execManual,
+  isRunning,
+  mkdirp,
+  readdir,
+  readFile,
+  sleep,
+  unlink,
+  writeFile,
+} from '../async';
+import {getTestsDir} from '../constants';
 
 import type {SuiteResult} from './runTestSuite';
 
@@ -39,7 +50,7 @@ export class TestBuilder {
       String(testNum),
     );
     this.sourceDir = join(
-      testsDir,
+      getTestsDir(),
       suiteName
     );
     this.tmpDir = join(
@@ -112,10 +123,12 @@ export class TestBuilder {
   }
 
   async addCode(code: string): Promise<void> {
-    await appendFile(this.getFileName(), "\n"+code+"\n");
+    const filename = this.getFileName();
+    await appendFile(filename, "\n"+code+"\n");
+    await this.forceRecheck([filename]);
   }
 
-  async addFile(source: string, dest: string): Promise<void> {
+  async addFileImpl(source: string, dest: string): Promise<string> {
     source = join(this.sourceDir, source);
     dest = join(this.dir, dest);
     const contents_buffer = await readFile(source);
@@ -126,15 +139,43 @@ export class TestBuilder {
     }
     await mkdirp(dirname(dest));
     await writeFile(dest, contents);
+    return dest;
+  }
+
+  async addFile(source: string, dest: string): Promise<void> {
+    const filename = await this.addFileImpl(source, dest);
+    await this.forceRecheck([filename]);
   }
 
   async addFiles(sources: Array<string>): Promise<void> {
-    await Promise.all(
-      sources.map(source => this.addFile(source, source))
+    const filenames = await Promise.all(
+      sources.map(source => this.addFileImpl(source, source))
     );
+    await this.forceRecheck(filenames);
   }
 
-  async flowCmd(args: Array<string>, stdinFile?: string): Promise<[number, string, string]> {
+  async removeFileImpl(file: string): Promise<string> {
+    file = join(this.dir, file);
+    await unlink(file);
+    return file;
+  }
+
+  async removeFile(file: string): Promise<void> {
+    const filename = await this.removeFileImpl(file);
+    await this.forceRecheck([filename]);
+  }
+
+  async removeFiles(files: Array<string>): Promise<void> {
+    const filenames = await Promise.all(
+      files.map(file => this.removeFileImpl(file))
+    );
+    await this.forceRecheck(filenames);
+  }
+
+  async flowCmd(
+    args: Array<string>,
+    stdinFile?: string,
+  ): Promise<[number, string, string]> {
     let cmd = format(
       "%s %s %s",
       this.bin,
@@ -234,6 +275,37 @@ export class TestBuilder {
       }
     }
   }
+
+  async waitForServerToDie(timeout: number): Promise<void> {
+    const pid = this.server;
+    if (pid == null) {
+      throw new Error('Cannot wait for a server that never started');
+    }
+    let remaining = timeout;
+    while (remaining > 0 && await isRunning(pid)) {
+      remaining -= 100;
+      await sleep(100);
+    }
+  }
+
+  async forceRecheck(files: Array<string>): Promise<void> {
+    if (this.server && await isRunning(this.server)) {
+      const [err, stdout, stderr] = await execManual(format(
+        "%s force-recheck --no-auto-start --temp-dir %s %s",
+        this.bin,
+        this.tmpDir,
+        files.map(s => `"${s}"`).join(" "),
+      ));
+
+      // No server running (6) is ok - the file change might have killed the
+      // server and we raced it here
+      if (err && err.code !== 6) {
+        throw new Error(
+          format('flow force-recheck failed!', err, stdout, stderr, files),
+        );
+      }
+    }
+  }
 }
 
 export default class Builder {
@@ -255,9 +327,12 @@ export default class Builder {
 
     // If something weird happens, lets make sure to stop all the flow servers
     // we started
-    process.on('exit', () => {
-      Builder.builders.forEach(builder => builder.stopFlowServerSync());
-    });
+    process.on('exit', this.cleanup);
+  }
+
+  cleanup = () => {
+    Builder.builders.forEach(builder => builder.stopFlowServerSync());
+    process.removeListener('exit', this.cleanup);
   }
 
   baseDirForSuite(suiteName: string): string {

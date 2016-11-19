@@ -4,11 +4,13 @@
 //= require codemirror/mode/xml/xml
 //= require codemirror/mode/jsx/jsx
 //= require lz-string
-//= depend_on flow.js
 
 import CodeMirror from "codemirror/lib/codemirror"
 import LZString from "lz-string"
-import flow from "flow"
+
+CodeMirror.defineOption('flow', null, function(editor) {
+  editor.performLint();
+});
 
 function get(url) {
   return new Promise(function(resolve, reject) {
@@ -29,24 +31,6 @@ function get(url) {
   });
 }
 
-var libs = [
-  '/static/flowlib/core.js',
-  '/static/flowlib/bom.js',
-  '/static/flowlib/cssom.js',
-  '/static/flowlib/dom.js',
-  '/static/flowlib/node.js',
-  '/static/flowlib/react.js',
-];
-
-var flowReady = Promise.all(libs.map(get)).then(function(contents) {
-  contents.forEach(function(nameAndContent) {
-    flow.registerFile(nameAndContent[0], nameAndContent[1]);
-  });
-  return libs;
-}).then(function(libs) {
-  flow.setLibs(libs);
-});
-
 function printError(err, editor) {
   const clickHandler = (msg) => {
     editor.getDoc().setSelection(
@@ -63,8 +47,12 @@ function printError(err, editor) {
       const prefix = `${filename}${msg.loc.start.line}: `;
 
       const before = msg.context.slice(0, msg.loc.start.column - 1);
-      const highlight = msg.context.slice(msg.loc.start.column - 1, msg.loc.end.column);
-      const after = msg.context.slice(msg.loc.end.column);
+      const highlight = (msg.loc.start.line === msg.loc.end.line) ?
+        msg.context.slice(msg.loc.start.column - 1, msg.loc.end.column) :
+        msg.context.slice(msg.loc.start.column - 1);
+      const after = (msg.loc.start.line === msg.loc.end.line) ?
+        msg.context.slice(msg.loc.end.column) :
+        '';
       div.appendChild(document.createTextNode(prefix + before));
       const bold = document.createElement('strong');
       bold.className = "msgHighlight";
@@ -103,15 +91,16 @@ function printErrors(errors, editor) {
   }, document.createElement('ul'));
 }
 
+function removeChildren(node) {
+  while (node.lastChild) node.removeChild(node.lastChild);
+}
+
 function getAnnotations(text, callback, options, editor) {
-  const errorsNode = options.errorsNode;
-  flowReady.then(function() {
+  const flow = editor.getOption('flow');
+  Promise.resolve(flow).then(flow => {
     var errors = flow.checkContent('-', text);
 
-    if (errorsNode) {
-      while (errorsNode.lastChild) errorsNode.removeChild(errorsNode.lastChild);
-      errorsNode.appendChild(printErrors(errors, editor));
-    }
+    CodeMirror.signal(editor, 'flowErrors', errors);
 
     var lint = errors.map(function(err) {
       var messages = err.message;
@@ -134,7 +123,8 @@ function getAnnotations(text, callback, options, editor) {
 }
 getAnnotations.async = true;
 
-const defaultValue = `/* @flow */
+const lastEditorValue = localStorage.getItem('tryFlowLastContent');
+const defaultValue = (lastEditorValue && getHashedValue(lastEditorValue)) || `/* @flow */
 
 function foo(x: ?number): string {
   if (x) {
@@ -154,7 +144,47 @@ function getHashedValue(hash) {
   return null;
 }
 
-exports.createEditor = function createEditor(domNode, errorsNode) {
+function removeClass(elem, className) {
+  elem.className = elem.className.split(/\s+/).filter(function(name) {
+    return name !== className;
+  }).join(' ');
+}
+
+const versionCache = {};
+function initFlow(version) {
+  if (version in versionCache) {
+    return Promise.resolve(versionCache[version]);
+  }
+  const libs = [
+    `/static/${version}/flowlib/core.js`,
+    `/static/${version}/flowlib/bom.js`,
+    `/static/${version}/flowlib/cssom.js`,
+    `/static/${version}/flowlib/dom.js`,
+    `/static/${version}/flowlib/node.js`,
+    `/static/${version}/flowlib/react.js`,
+  ];
+  const flow = new Promise(function(resolve) {
+    require([`${version}/flow`], resolve);
+  });
+  return Promise.all([flow, ...libs.map(get)])
+    .then(function([flow, ...contents]) {
+      contents.forEach(function(nameAndContent) {
+        flow.registerFile(nameAndContent[0], nameAndContent[1]);
+      });
+      flow.setLibs(libs);
+      versionCache[version] = flow;
+      return flow;
+    });
+}
+
+exports.createEditor = function createEditor(
+  flowVersion,
+  domNode,
+  resultsNode,
+  flowVersions
+) {
+  const flowReady = initFlow(flowVersion);
+
   require([
     'codemirror/addon/lint/lint',
     'codemirror/mode/javascript/javascript',
@@ -163,18 +193,136 @@ exports.createEditor = function createEditor(domNode, errorsNode) {
   ], function() {
     const location = window.location;
 
+    flowReady.then(function() {
+      removeClass(resultsNode, 'show-loading');
+    });
+
+    const errorsTabNode = document.createElement('li');
+    errorsTabNode.className = "tab errors-tab";
+    errorsTabNode.appendChild(document.createTextNode('Errors'));
+    errorsTabNode.addEventListener('click', function(evt) {
+      removeClass(resultsNode, 'show-json');
+      removeClass(resultsNode, 'show-ast');
+      resultsNode.className += ' show-errors';
+      evt.preventDefault();
+    });
+
+    const jsonTabNode = document.createElement('li');
+    jsonTabNode.className = "tab json-tab";
+    jsonTabNode.appendChild(document.createTextNode('JSON'));
+    jsonTabNode.addEventListener('click', function(evt) {
+      removeClass(resultsNode, 'show-errors');
+      removeClass(resultsNode, 'show-ast');
+      resultsNode.className += ' show-json';
+      evt.preventDefault();
+    });
+
+    const astTabNode = document.createElement('li');
+    astTabNode.className = "tab ast-tab";
+    astTabNode.appendChild(document.createTextNode('AST'));
+    astTabNode.addEventListener('click', function(evt) {
+      removeClass(resultsNode, 'show-errors');
+      removeClass(resultsNode, 'show-json');
+      resultsNode.className += ' show-ast';
+      evt.preventDefault();
+    });
+
+    const versionSelector = document.createElement('select');
+    flowVersions.forEach(
+      function(version) {
+        const option = document.createElement('option');
+        option.value = version;
+        option.text = version;
+        option.selected = version == flowVersion;
+        versionSelector.add(option, null);
+      }
+    );
+    const versionTabNode = document.createElement('li');
+    versionTabNode.className = "version";
+    versionTabNode.appendChild(versionSelector);
+
+    const toolbarNode = document.createElement('ul');
+    toolbarNode.className = "toolbar";
+    toolbarNode.appendChild(errorsTabNode);
+    toolbarNode.appendChild(jsonTabNode);
+    toolbarNode.appendChild(astTabNode);
+    toolbarNode.appendChild(versionTabNode);
+
+    const errorsNode = document.createElement('pre');
+    errorsNode.className = "errors";
+
+    const jsonNode = document.createElement('pre');
+    jsonNode.className = "json";
+
+    const astNode = document.createElement('pre');
+    astNode.className = "ast";
+
+    resultsNode.appendChild(toolbarNode);
+    resultsNode.appendChild(errorsNode);
+    resultsNode.appendChild(jsonNode);
+    resultsNode.appendChild(astNode);
+
+    resultsNode.className += " show-errors";
+
     const editor = CodeMirror(domNode, {
       value: getHashedValue(location.hash) || defaultValue,
       autofocus: true,
       lineNumbers: true,
       mode: "jsx",
-      lint: { getAnnotations, errorsNode }
+      flow: flowReady,
+      lint: getAnnotations
     });
 
     editor.on('changes', () => {
       const value = editor.getValue();
       const encoded = LZString.compressToEncodedURIComponent(value);
-      location.hash = `#0${encoded}`;
+      history.replaceState(undefined, undefined, `#0${encoded}`);
+      localStorage.setItem('tryFlowLastContent', location.hash);
+    });
+
+    editor.on('flowErrors', errors => {
+      if (errorsNode) {
+        removeChildren(errorsNode);
+        errorsNode.appendChild(printErrors(errors, editor));
+      }
+
+      if (jsonNode) {
+        removeChildren(jsonNode);
+        jsonNode.appendChild(
+          document.createTextNode(JSON.stringify(errors, null, 2))
+        );
+      }
+
+      if (astNode) {
+        flowReady.then(flow => {
+          if (flow.parse) {
+            let ast = flow.parse(editor.getValue(), {});
+            removeChildren(astNode);
+            astNode.appendChild(
+              document.createTextNode(JSON.stringify(ast, null, 2))
+            );
+            astNode.dataset.disabled = "false";
+          } else if (astNode.dataset.disabled !== "true") {
+            astNode.dataset.disabled = "true";
+            removeChildren(astNode);
+            astNode.appendChild(
+              document.createTextNode(
+                "AST output is not supported in this version of Flow."
+              )
+            );
+          }
+        });
+      }
+    });
+
+    versionTabNode.addEventListener('change', function(evt) {
+      const version = evt.target.value;
+      resultsNode.className += ' show-loading';
+      const flowReady = initFlow(version);
+      flowReady.then(function() {
+        removeClass(resultsNode, 'show-loading');
+      });
+      editor.setOption('flow', flowReady);
     });
   });
 }

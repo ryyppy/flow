@@ -1,6 +1,15 @@
 #!/bin/bash -e
 
-OPAM_DEPENDS="js_of_ocaml.2.7 ocp-build"
+OPAM_DEPENDS="ocp-build"
+
+# js_of_ocaml 2.7 is  <  ocaml 4.03
+# js_of_ocaml 2.8 is  >= ocaml 4.02
+# opam 1.1.1 doesn't have js_of_ocaml 2.8
+if [ "$OPAM_VERSION" = "1.1.1" ] || [ "$OCAML_VERSION" = "4.01.0" ]; then
+  OPAM_DEPENDS+=" js_of_ocaml.2.7"
+else
+  OPAM_DEPENDS+=" js_of_ocaml.2.8.1"
+fi
 
 TMP=${TMPDIR:-/tmp}
 
@@ -25,33 +34,7 @@ ARCH=$(uname -m || echo unknown)
 SLUG="ocaml-${OCAML_VERSION}_opam-${OPAM_VERSION}_${PLATFORM}-${ARCH}"
 
 CACHE_ROOT="$HOME/.flow_cache"
-BOWER_CACHE="$CACHE_ROOT/.bower"
 mkdir -p "$CACHE_ROOT"
-mkdir -p "$BOWER_CACHE"
-
-case "$TRAVIS_OS_NAME" in
-  osx)
-    printf "travis_fold:start:brew_install\nInstalling brew\n"
-    brew update
-    brew install aspcud awscli
-    printf "travis_fold:end:brew_install\n"
-
-    printf "travis_fold:start:cache.1\nSetting up build cache\n"
-    echo -n "downloading $TRAVIS_BRANCH/$SLUG.tar.gz:"
-    curl -sSL --fail -o "$TMP/$SLUG.tar.gz" \
-      "https://s3.amazonaws.com/ci-cache.flowtype.org/$TRAVIS_BRANCH/$SLUG.tar.gz" \
-      || true
-    if [ -f "$TMP/$SLUG.tar.gz" ]; then
-      gzip -d "$TMP/$SLUG.tar.gz"
-      shasum "$TMP/$SLUG.tar" > "$TMP/$SLUG.tar.sha1"
-      tar -Pxf "$TMP/$SLUG.tar"
-      echo " done"
-    else
-      echo " no cache found"
-    fi
-    printf "travis_fold:end:cache.1\n"
-    ;;
-esac
 
 printf "travis_fold:start:opam_installer\nInstalling ocaml %s and opam %s\n" \
   "$OCAML_VERSION" "$OPAM_VERSION"
@@ -101,20 +84,20 @@ echo "Installing dependencies..."
 printf "travis_fold:end:opam_installer\n"
 
 printf "travis_fold:start:npm_install\nInstalling npm dependencies\n"
+  case "$TRAVIS_OS_NAME" in
+    osx)
+      # OS X has a modern version of node already
+      ;;
+    *)
+      source $HOME/.nvm/nvm.sh
+      nvm use 6
+  esac
+
   printf "Using npm version $(npm --version)\n"
 
   printf "travis_fold:start:npm_install_tool\nRunning npm install for tool\n"
     npm install | cat
   printf "travis_fold:end:npm_install_tool\n"
-
-  printf "travis_fold:start:npm_install_website\nRunning npm install for the website\n"
-    pushd website >/dev/null
-      npm install | cat
-      node_modules/.bin/bower \
-        --config.storage.packages="$BOWER_CACHE/packages" \
-        install
-    popd >/dev/null
-  printf "travis_fold:end:npm_install_website\n"
 
   printf "travis_fold:start:npm_install_parser\nRunning npm install for the parser\n"
     pushd src/parser >/dev/null

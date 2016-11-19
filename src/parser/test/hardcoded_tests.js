@@ -129,16 +129,19 @@ module.exports = {
         ]
       },
       'function foo(...typedRest: Array<number>){}': {
-        'body.0.rest': {
-          'name': 'typedRest',
-          'typeAnnotation.typeAnnotation': {
-            'type': 'GenericTypeAnnotation',
-            'id.name': 'Array',
-            'typeParameters.params': [
-              {
-                'type': 'NumberTypeAnnotation',
-              }
-            ],
+        'body.0.params.0': {
+          'type': 'RestElement',
+          'argument': {
+            'name': 'typedRest',
+            'typeAnnotation.typeAnnotation': {
+              'type': 'GenericTypeAnnotation',
+              'id.name': 'Array',
+              'typeParameters.params': [
+                {
+                  'type': 'NumberTypeAnnotation',
+                }
+              ],
+            }
           }
         }
       },
@@ -177,7 +180,7 @@ module.exports = {
                   'key.name': 'numVal',
                   'value.type': 'NumberTypeAnnotation',
                 }
-              ]
+              ],
             }
           }
         }
@@ -412,10 +415,11 @@ module.exports = {
             'optional': false,
           },
           {
-            'optional': true,
+            'type': 'AssignmentPattern',
+            'left.optional': true,
+            'right.value': 123,
           },
         ],
-        'body.0.defaults.1.value': 123,
       },
       'class Foo {set fooProp(value:number){}}': {
         'body.0.body.body.0.value.params.0.typeAnnotation.typeAnnotation': {
@@ -816,6 +820,29 @@ module.exports = {
           {'type': 'ExistsTypeAnnotation'}
         ]
       },
+      'type T = { a: | number | string }': {
+        'body.0.right.properties.0.value': {
+          'type': 'UnionTypeAnnotation',
+          'types': [
+            {'type': 'NumberTypeAnnotation'},
+            {'type': 'StringTypeAnnotation'},
+          ]
+        }
+      }
+    },
+    'Exact object types': {
+      'var obj: {| x: number, y: string |}': {  // no trailing comma
+        'body.0.declarations.0.id.typeAnnotation.typeAnnotation': {
+          'type': 'ObjectTypeAnnotation',
+          'exact': true,
+        },
+      },
+      'var obj: {| x: number, y: string, |}': {  // trailing comma
+        'body.0.declarations.0.id.typeAnnotation.typeAnnotation': {
+          'type': 'ObjectTypeAnnotation',
+          'exact': true,
+        },
+      }
     },
     'Tuples': {
       'var a : [] = [];': {
@@ -1202,12 +1229,22 @@ module.exports = {
       },
       'export default class {}': {
         'body.0.declaration': {
-          'type': 'ClassExpression',
+          'type': 'ClassDeclaration',
         }
       },
       'export default class A {}': {
         'body.0.declaration': {
           'type': 'ClassDeclaration',
+        }
+      },
+      'export default function() {}': {
+        'body.0.declaration': {
+          'type': 'FunctionDeclaration',
+        }
+      },
+      'export default function a() {}': {
+        'body.0.declaration': {
+          'type': 'FunctionDeclaration',
         }
       },
       'export type A = number': {
@@ -1225,8 +1262,8 @@ module.exports = {
           "esproposal_export_star_as": true
         },
         'body.0.specifiers': [{
-          'type': 'ExportBatchSpecifier',
-          'name': {
+          'type': 'ExportNamespaceSpecifier',
+          'exported': {
             'type': 'Identifier',
             'name': 'foo'
           },
@@ -1306,6 +1343,107 @@ module.exports = {
         ]
       }
     },
+    'ES6: new.target': {
+        'new.target': {
+          'errors': [
+            {'message': 'Unexpected token .'}
+          ],
+        },
+        'var x = function() { y = new..target; }': {
+          'errors.0': {'message': 'Unexpected token .', 'loc.start.column': 29},
+        },
+        'function x() { new.unknown_property; }': {
+          'errors.0': {
+            'message': 'Unexpected identifier',
+            'loc.start.column': 19,
+            'loc.end.column': 35,
+          },
+        },
+        'function x() { new.target }': {
+          'body.0.body.body.0.expression': {
+            'type': 'MetaProperty',
+            'meta': {'type': 'Identifier', 'name': 'new'},
+            'property': {'type': 'Identifier', 'name': 'target'},
+            'loc.start.column': 15,
+            'loc.end.column': 25,
+          },
+        },
+        'function x() { let x = new.target; }': {
+          'body.0.body.body.0.declarations.0.init': {
+            'type': 'MetaProperty',
+            'meta': {'type': 'Identifier', 'name': 'new'},
+            'property': {'type': 'Identifier', 'name': 'target'},
+            'loc.start.column': 23,
+            'loc.end.column': 33,
+          }
+        },
+        'function x() { new new.target; }': {
+          'body.0.body.body.0.expression': {
+            'type': 'NewExpression',
+            'callee': {
+              'type': 'MetaProperty',
+              'meta': {'type': 'Identifier', 'name': 'new'},
+              'property': {'type': 'Identifier', 'name': 'target'},
+              'loc.start.column': 19,
+              'loc.end.column': 29,
+            }
+          },
+        },
+        'function x() { new.target(); }': {
+          'body.0.body.body.0.expression': {
+            'type': 'CallExpression',
+            'callee': {
+              'type': 'MetaProperty',
+              'meta': {'type': 'Identifier', 'name': 'new'},
+              'property': {'type': 'Identifier', 'name': 'target'},
+              'loc.start.column': 15,
+              'loc.end.column': 25,
+            },
+            'arguments': [],
+          }
+        },
+        'function x() { new new.target()(); }': {
+          'body.0.body.body.0.expression': {
+            'type': 'CallExpression',
+            'callee': {
+              'type': 'NewExpression',
+              'callee': {
+                'type': 'MetaProperty',
+                'meta': {'type': 'Identifier', 'name': 'new'},
+                'property': {'type': 'Identifier', 'name': 'target'},
+                'loc.start.column': 19,
+                'loc.end.column': 29,
+              },
+              'arguments': [],
+            },
+            'arguments': [],
+          }
+        },
+    },
+    'ES6: object short notation': {
+      'let get = 123; let x = { get };': {
+        'body.1.declarations.0.init.properties.0': {
+          'key': { 'type': 'Identifier', 'name': 'get' },
+          'value': { 'type': 'Identifier', 'name': 'get' },
+        }
+      },
+      'let set = 123; let x = { set };': {
+        'body.1.declarations.0.init.properties.0': {
+          'key': { 'type': 'Identifier', 'name': 'set' },
+          'value': { 'type': 'Identifier', 'name': 'set' },
+        }
+      },
+      'let get = 123, set = 234; let x = { get, set };': {
+        'body.1.declarations.0.init.properties.0': {
+          'key': { 'type': 'Identifier', 'name': 'get' },
+          'value': { 'type': 'Identifier', 'name': 'get' },
+        },
+        'body.1.declarations.0.init.properties.1': {
+          'key': { 'type': 'Identifier', 'name': 'set' },
+          'value': { 'type': 'Identifier', 'name': 'set' },
+        }
+      },
+    },
     'Declare Statements': {
       'declare var foo': {
         'body': [{
@@ -1338,6 +1476,7 @@ module.exports = {
               'returnType.type': 'VoidTypeAnnotation',
             },
           },
+          'predicate': null,
         }],
       },
       'declare function foo(): void;': {
@@ -1353,6 +1492,7 @@ module.exports = {
               'returnType.type': 'VoidTypeAnnotation',
             },
           },
+          'predicate': null,
         }],
       },
       'declare function foo(x: number, y: string): void;': {
@@ -1375,6 +1515,30 @@ module.exports = {
               'returnType.type': 'VoidTypeAnnotation',
             },
           },
+          'predicate': null,
+        },
+      },
+      // Function argument types are now optional
+      'declare function foo(x: number, string): void': {
+        'body.0': {
+          'type': 'DeclareFunction',
+          'id': {
+            'name': 'foo',
+            'typeAnnotation.typeAnnotation': {
+              'type': 'FunctionTypeAnnotation',
+              'params': [
+                {
+                  'name.name': 'x',
+                  'typeAnnotation.type': 'NumberTypeAnnotation',
+                },
+                {
+                  'typeAnnotation.type': 'StringTypeAnnotation',
+                },
+              ],
+              'returnType.type': 'VoidTypeAnnotation',
+            },
+          },
+          'predicate': null,
         },
       },
       'declare class A {}': {
@@ -1445,30 +1609,16 @@ module.exports = {
       'declare export * from "foo";': {
         'body': [
           {
-            'type': 'DeclareExportDeclaration',
-            'specifiers': [
-              {
-                'type': 'ExportBatchSpecifier',
-              }
-            ],
+            'type': 'DeclareExportAllDeclaration',
             'source.value': "foo",
-            'declaration': null,
-            'default': false,
           },
         ],
       },
       'declare export * from "foo"': {
         'body': [
           {
-            'type': 'DeclareExportDeclaration',
-            'specifiers': [
-              {
-                'type': 'ExportBatchSpecifier',
-              }
-            ],
+            'type': 'DeclareExportAllDeclaration',
             'source.value': "foo",
-            'declaration': null,
-            'default': false,
           },
         ],
       },
@@ -1483,7 +1633,7 @@ module.exports = {
         'body.0.specifiers': [
           {
             'type': 'ExportSpecifier',
-            'id.name': 'bar',
+            'local.name': 'bar',
           },
         ],
       },
@@ -1491,10 +1641,10 @@ module.exports = {
       'declare export { bar, baz } from "foo";': {
         'body.0.specifiers': [
           {
-            'id.name': 'bar',
+            'local.name': 'bar',
           },
           {
-            'id.name': 'baz',
+            'local.name': 'baz',
           },
         ],
       },
@@ -1529,11 +1679,14 @@ module.exports = {
             'params': [],
             'returnType.type': 'VoidTypeAnnotation',
           },
+          'predicate': null,
         },
       },
       'declare export function foo(): void;': {},
       'declare export function foo<T>(): void;': {},
       'declare export function foo(x: number, y: string): void;': {},
+      // Function argument types are now optional
+      'declare export function foo(x: number, string): void': {},
 
       // Class export
       'declare export class A {}': {
@@ -1588,6 +1741,7 @@ module.exports = {
             'params': [],
             'returnType.type': 'VoidTypeAnnotation',
           },
+          'predicate': null,
         },
         'body.0.default': true,
       },
@@ -1637,12 +1791,7 @@ module.exports = {
         'body.0': {
           'type': 'DeclareModule',
           'body.body.0': {
-            'type': 'DeclareExportDeclaration',
-            'declaration': null,
-            'specifiers': [{
-              'type': 'ExportBatchSpecifier',
-              'name': null,
-            }],
+            'type': 'DeclareExportAllDeclaration',
             'source': {
               'type': 'Literal',
               'value': 'bar',
@@ -1660,7 +1809,12 @@ module.exports = {
             'declaration': null,
             'specifiers': [{
               'type': 'ExportSpecifier',
-              'id': {
+              'local': {
+                'type': 'Identifier',
+                'name': 'a',
+                'typeAnnotation': null,
+              },
+              'exported': {
                 'type': 'Identifier',
                 'name': 'a',
                 'typeAnnotation': null,
@@ -1683,7 +1837,12 @@ module.exports = {
             'declaration': null,
             'specifiers': [{
               'type': 'ExportSpecifier',
-              'id': {
+              'local': {
+                'type': 'Identifier',
+                'name': 'a',
+                'typeAnnotation': null,
+              },
+              'exported': {
                 'type': 'Identifier',
                 'name': 'a',
                 'typeAnnotation': null,
@@ -1730,6 +1889,7 @@ module.exports = {
                   'returnType.type': 'StringTypeAnnotation',
                 },
               },
+              'predicate': null,
             },
             'specifiers.length': 0,
             'source': null,
@@ -1883,15 +2043,6 @@ module.exports = {
           },
         }
       },
-      // You must provide types for each function parameter
-      'declare export function foo(x): void': {
-        'errors': {
-          '0': {
-            'message': 'Unexpected token )',
-            'loc.start.column': 29,
-          },
-        },
-      },
       'declare export class A { static : number }': {
         'body.0.declaration.body.properties.0.static': false,
         'errors': [
@@ -1936,15 +2087,6 @@ module.exports = {
             'loc.start.column': 22,
           },
         }
-      },
-      // You must provide types for each function parameter
-      'declare function foo(x): void': {
-        'errors': {
-          '0': {
-            'message': 'Unexpected token )',
-            'loc.start.column': 22,
-          },
-        },
       },
       'declare class A { static : number }': {
         'body.0.body.properties.0.static': false,
@@ -3111,50 +3253,92 @@ module.exports = {
       "import async from 'foo'": {},
       "import await from 'foo'": {},
     },
-    'Invalid Async Generators': {
+    'Async Generators': {
       'async function *foo() {}' : {
-        'errors': {
-          '0.message': 'A function may not be both async and a generator',
+        'errors': [],
+        'body.0': {
+          'type': 'FunctionDeclaration',
+          'async': true,
+          'generator': true,
         },
       },
-      'async function *ft<T>(a: T): void {}' : {
-        'errors': {
-          '0.message': 'A function may not be both async and a generator',
+      'async function *ft<T>(a: T) {}' : {
+        'errors': [],
+        'body.0': {
+          'type': 'FunctionDeclaration',
+          'async': true,
+          'generator': true,
         },
       },
       'class C { async *m() {} }' : {
-        'errors': {
-          '0.message': 'A function may not be both async and a generator',
+        'errors': [],
+        'body.0.body.body.0': {
+          'type': 'MethodDefinition',
+          'value': {
+            'type': 'FunctionExpression',
+            'async': true,
+            'generator': true,
+          },
         },
       },
-      'class C { async *mt<T>(a: T): void {} }' : {
-        'errors': {
-          '0.message': 'A function may not be both async and a generator',
+      'class C { async *mt<T>(a: T) {} }' : {
+        'errors': [],
+        'body.0.body.body.0': {
+          'type': 'MethodDefinition',
+          'value': {
+            'type': 'FunctionExpression',
+            'async': true,
+            'generator': true,
+          },
         },
       },
-      'class C { static async *m(a): void {} }' : {
-        'errors': {
-          '0.message': 'A function may not be both async and a generator',
+      'class C { static async *m(a) {} }' : {
+        'errors': [],
+        'body.0.body.body.0': {
+          'type': 'MethodDefinition',
+          'value': {
+            'type': 'FunctionExpression',
+            'async': true,
+            'generator': true,
+          },
         },
       },
-      'class C { static async *mt<T>(a: T): void {} }' : {
-        'errors': {
-          '0.message': 'A function may not be both async and a generator',
+      'class C { static async *mt<T>(a: T) {} }' : {
+        'errors': [],
+        'body.0.body.body.0': {
+          'type': 'MethodDefinition',
+          'value': {
+            'type': 'FunctionExpression',
+            'async': true,
+            'generator': true,
+          },
         },
       },
       'var e = async function *() {};' : {
-        'errors': {
-          '0.message': 'A function may not be both async and a generator',
+        'errors': [],
+        'body.0.declarations.0.init': {
+          'type': 'FunctionExpression',
+          'async': true,
+          'generator': true,
         },
       },
-      'var et = async function*<T> (a: T): void {};' : {
-        'errors': {
-          '0.message': 'A function may not be both async and a generator',
+      'var et = async function*<T> (a: T) {};' : {
+        'errors': [],
+        'body.0.declarations.0.init': {
+          'type': 'FunctionExpression',
+          'async': true,
+          'generator': true,
         },
       },
       'var n = new async function*() {};' : {
-        'errors': {
-          '0.message': 'A function may not be both async and a generator',
+        'errors': [],
+        'body.0.declarations.0.init': {
+          'type': 'NewExpression',
+          'callee': {
+            'type': 'FunctionExpression',
+            'async': true,
+            'generator': true,
+          },
         },
       },
     },
@@ -3521,6 +3705,20 @@ module.exports = {
           'value.type': 'FunctionExpression',
           'kind': 'method',
         }],
+      },
+      'class X {x?:T} {}': {
+        'errors': [{
+          'loc.start.column': 10,
+          'loc.end.column': 11,
+          'message': 'Unexpected token ?',
+        }]
+      },
+      'class X {+x?:T} {}': {
+        'errors': [{
+          'loc.start.column': 11,
+          'loc.end.column': 12,
+          'message': 'Unexpected token ?',
+        }]
       },
     },
     'Comments': {
@@ -3919,12 +4117,12 @@ module.exports = {
     'Destructuring with default values': {
       'let {x=y} = {}': {
         'body.0.declarations.0.id.properties': [{
-          'type': 'PropertyPattern',
+          'type': 'Property',
           'key': {
             'type': 'Identifier',
             'name': 'x',
           },
-          'pattern': {
+          'value': {
             'type': 'AssignmentPattern',
             'left': {
               'type': 'Identifier',
@@ -3935,18 +4133,20 @@ module.exports = {
               'name': 'y',
             }
           },
-          'shorthand': true
+          'shorthand': true,
+          'kind': 'init',
+          'method': false,
         }]
       },
       'let {x:y=z} = {}': {
         'errors.length': 0,
         'body.0.declarations.0.id.properties': [{
-          'type': 'PropertyPattern',
+          'type': 'Property',
           'key': {
             'type': 'Identifier',
             'name': 'x',
           },
-          'pattern': {
+          'value': {
             'type': 'AssignmentPattern',
             'left': {
               'type': 'Identifier',
@@ -3957,28 +4157,30 @@ module.exports = {
               'name': 'z',
             }
           },
-          'shorthand': false
+          'shorthand': false,
+          'kind': 'init',
+          'method': false,
         }]
       },
       'let {p:{q=0,...o}={r:0}} = {p:{r:""}}': {
         'errors.length': 0,
         'body.0.declarations.0.id.properties': [{
-          'type': 'PropertyPattern',
+          'type': 'Property',
           'key': {
             'type': 'Identifier',
             'name': 'p'
           },
-          'pattern': {
+          'value': {
             'type': 'AssignmentPattern',
             'left': {
               'type': 'ObjectPattern',
               'properties': [{
-                'type': 'PropertyPattern',
+                'type': 'Property',
                 'key': {
                   'type': 'Identifier',
                   'name': 'q'
                 },
-                'pattern': {
+                'value': {
                   'type': 'AssignmentPattern',
                   'left': {
                     'type': 'Identifier',
@@ -3990,9 +4192,11 @@ module.exports = {
                     'raw': '0'
                   }
                 },
-                'shorthand':true
+                'shorthand':true,
+                'kind': 'init',
+                'method': false,
               }, {
-                'type': 'SpreadPropertyPattern',
+                'type': 'RestProperty',
                 'argument': {
                   'type': 'Identifier',
                   'name': 'o'
@@ -4001,7 +4205,9 @@ module.exports = {
             },
             'right': {'type': 'ObjectExpression'}
           },
-          'shorthand':false
+          'shorthand':false,
+          'kind': 'init',
+          'method': false,
         }]
       },
       'let [x=y] = []': {
@@ -4080,5 +4286,727 @@ module.exports = {
         'errors.0.message': 'Unexpected token ='
       }
     },
+    'Function Predicates': {
+      'declare function f(x: mixed): boolean %checks(x !== null);': {
+        'body.0': {
+          'type': 'DeclareFunction',
+          'id': {
+            'name': 'f',
+            'typeAnnotation.typeAnnotation': {
+              'type': 'FunctionTypeAnnotation',
+              'params': [
+                {
+                  'name.name': 'x',
+                  'typeAnnotation.type': 'MixedTypeAnnotation',
+                }
+              ],
+              'returnType.type': 'BooleanTypeAnnotation'
+            }
+          },
+          'predicate':{
+            'type':'DeclaredPredicate',
+            'value':{
+              'type':'BinaryExpression',
+              'operator':'!==',
+              'left':{
+                'type':'Identifier',
+                'name':'x',
+                'typeAnnotation':null,
+                'optional':false
+              },
+              'right':{
+                'type':'Literal',
+                'value':null,
+                'raw':'null'
+              }
+            }
+          },
+        },
+      },
+      'function foo(x: mixed): %checks { return x !== null }': {
+        'body.0': {
+          'type':'FunctionDeclaration',
+          'id':{
+            'type':'Identifier',
+            'name':'foo',
+            'typeAnnotation':null,
+            'optional':false
+          },
+          'params':[
+            {
+              'type':'Identifier',
+              'name':'x',
+              'typeAnnotation':{
+                'type':'TypeAnnotation',
+                'typeAnnotation':{
+                  'type':'MixedTypeAnnotation',
+                }
+              },
+              'optional':false
+            }
+          ],
+          'body':{
+            'type':'BlockStatement',
+            'body':[
+              {
+                'type':'ReturnStatement',
+                'argument':{
+                  'type':'BinaryExpression',
+                  'operator':'!==',
+                  'left':{
+                    'type':'Identifier',
+                    'name':'x',
+                    'typeAnnotation':null,
+                    'optional':false
+                  },
+                  'right':{
+                    'type':'Literal',
+                    'value':null,
+                    'raw':'null'
+                  }
+                }
+              }
+            ]
+          },
+          'async':false,
+          'generator':false,
+          'predicate': { 'type': 'InferredPredicate' },
+          'expression':false,
+          'returnType':null,
+          'typeParameters':null
+        }
+      },
+      'var a1 = (x: mixed): %checks => x !== null;': {
+        'body.0':     {
+          'type':'VariableDeclaration',
+          'declarations':[
+            {
+              'type':'VariableDeclarator',
+              'id':{
+                'type':'Identifier',
+                'name':'a1',
+                'typeAnnotation':null,
+                'optional':false
+              },
+              'init':{
+                'type':'ArrowFunctionExpression',
+                'id':null,
+                'params':[
+                  {
+                    'type':'Identifier',
+                    'name':'x',
+                    'typeAnnotation':{
+                      'type':'TypeAnnotation',
+                      'typeAnnotation':{
+                        'type':'MixedTypeAnnotation',
+                      }
+                    },
+                    'optional':false
+                  }
+                ],
+                'body':{
+                  'type':'BinaryExpression',
+                  'operator':'!==',
+                  'left':{
+                    'type':'Identifier',
+                    'name':'x',
+                    'typeAnnotation':null,
+                    'optional':false
+                  },
+                  'right':{
+                    'type':'Literal',
+                    'value':null,
+                    'raw':'null'
+                  }
+                },
+                'async':false,
+                'generator':false,
+                'predicate':{
+                  'type':'InferredPredicate',
+                },
+                'expression':true,
+                'returnType':null,
+                'typeParameters':null
+              }
+            }
+          ],
+          'kind':'var'
+        }
+      },
+      '(x): %checks => x !== null;': {
+        'body.0':     {
+          'type':'ExpressionStatement',
+          'expression':{
+            'type':'ArrowFunctionExpression',
+            'id':null,
+            'params':[
+              {
+                'type':'Identifier',
+                'name':'x',
+                'typeAnnotation':null,
+                'optional':false
+              }
+            ],
+            'body':{
+              'type':'BinaryExpression',
+              'operator':'!==',
+              'left':{
+                'type':'Identifier',
+                'name':'x',
+                'typeAnnotation':null,
+                'optional':false
+              },
+              'right':{
+                'type':'Literal',
+                'value':null,
+                'raw':'null'
+              }
+            },
+            'async':false,
+            'generator':false,
+            'predicate':{
+              'type':'InferredPredicate',
+            },
+            'expression':true,
+            'returnType':null,
+            'typeParameters':null
+          }
+        }
+
+      },
+      'var a3: (x: mixed) => boolean %checks(x !== null);': {
+        'errors.0.message': 'Unexpected token %'
+      },
+      'declare function f(x: mixed): boolean %checks(var x = 1; typeof x == "string");': {
+        'errors.0.message': 'Unexpected token var'
+      }
+    },
+    'Object type property variance': {
+      'type X = {p:T}': {
+        'errors.length': 0,
+        'body.0.right.properties.0.variance': null
+      },
+      'type X = {+p:T}': {
+        'errors.length': 0,
+        'body.0.right.properties.0.variance': 'plus'
+      },
+      'type X = {-p:T}': {
+        'errors.length': 0,
+        'body.0.right.properties.0.variance': 'minus'
+      },
+      'type X = {m():T}': {
+        'errors.length': 0,
+        'body.0.right.properties.0.variance': null
+      },
+      'type X = {+m():T}': {
+        'errors.0': {
+          'loc.start.column': 10,
+          'loc.end.column': 11,
+          'message': 'Unexpected variance sigil'
+        }
+      },
+      'type X = {-m():T}': {
+        'errors.0': {
+          'loc.start.column': 10,
+          'loc.end.column': 11,
+          'message': 'Unexpected variance sigil'
+        }
+      },
+      'type X = {[k:K]:V}': {
+        'errors.length': 0,
+        'body.0.right.indexers.0.variance': null
+      },
+      'type X = {+[k:K]:V}': {
+        'errors.length': 0,
+        'body.0.right.indexers.0.variance': 'plus'
+      },
+      'type X = {-[k:K]:V}': {
+        'errors.length': 0,
+        'body.0.right.indexers.0.variance': 'minus'
+      },
+      'type X = {():T}': {
+        'errors.length': 0,
+      },
+      'type X = {+():T}': {
+        'errors.0': {
+          'loc.start.column': 10,
+          'loc.end.column': 11,
+          'message': 'Unexpected variance sigil'
+        }
+      },
+      'type X = {-():T}': {
+        'errors.0': {
+          'loc.start.column': 10,
+          'loc.end.column': 11,
+          'message': 'Unexpected variance sigil'
+        }
+      }
+    },
+    'Class property variance': {
+      'class C {p:T}': {
+        'errors.length': 0,
+        'body.0.body.body.0.variance': null
+      },
+      'class C {+p:T}': {
+        'errors.length': 0,
+        'body.0.body.body.0.variance': 'plus'
+      },
+      'class C {-p:T}': {
+        'errors.length': 0,
+        'body.0.body.body.0.variance': 'minus'
+      },
+      'class C {+m(){}}': {
+        'errors.0': {
+          'loc.start.column': 9,
+          'loc.end.column': 10,
+          'message': 'Unexpected variance sigil'
+        }
+      },
+      'class C {-m() {}}': {
+        'errors.0': {
+          'loc.start.column': 9,
+          'loc.end.column': 10,
+          'message': 'Unexpected variance sigil'
+        }
+      },
+      'class C {async +m() {}}': {
+        'errors.0': {
+          'loc.start.column': 15,
+          'loc.end.column': 16,
+          'message': 'Unexpected variance sigil'
+        },
+        'body.0.body.body.0.value.async': true
+      },
+      'class C {async -m():T {}}': {
+        'errors.0': {
+          'loc.start.column': 15,
+          'loc.end.column': 16,
+          'message': 'Unexpected variance sigil'
+        },
+        'body.0.body.body.0.value.async': true
+      },
+      'class C {*+m() {}}': {
+        'errors.0': {
+          'loc.start.column': 10,
+          'loc.end.column': 11,
+          'message': 'Unexpected variance sigil'
+        },
+        'body.0.body.body.0.value.generator': true
+      },
+      'class C {*-m():T {}}': {
+        'errors.0': {
+          'loc.start.column': 10,
+          'loc.end.column': 11,
+          'message': 'Unexpected variance sigil'
+        },
+        'body.0.body.body.0.value.generator': true
+      },
+      'class C {+*m() {}}': {
+        'errors.0': {
+          'loc.start.column': 9,
+          'loc.end.column': 10,
+          'message': 'Unexpected variance sigil'
+        },
+        'body.0.body.body.0.value.generator': true
+      },
+      'class C {-*m():T {}}': {
+        'errors.0': {
+          'loc.start.column': 9,
+          'loc.end.column': 10,
+          'message': 'Unexpected variance sigil'
+        },
+        'body.0.body.body.0.value.generator': true
+      }
+    },
+    'Function Types with Anonymous Parameters': {
+      'type A = (string) => void': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params.0': {
+            'name': null,
+            'typeAnnotation.type': 'StringTypeAnnotation',
+          },
+        }
+      },
+      'type A = (string,) => void': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params.0': {
+            'name': null,
+            'typeAnnotation.type': 'StringTypeAnnotation',
+          },
+        }
+      },
+      'type A = (Array<string>) => void': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params.0': {
+            'name': null,
+            'typeAnnotation.type': 'GenericTypeAnnotation',
+            'typeAnnotation.typeParameters.params.0.type': 'StringTypeAnnotation',
+          },
+        }
+      },
+      'type A = (Array<string>,) => void': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params.0': {
+            'name': null,
+            'typeAnnotation.type': 'GenericTypeAnnotation',
+            'typeAnnotation.typeParameters.params.0.type': 'StringTypeAnnotation',
+          },
+        }
+      },
+      'type A = (x: string, number) => void': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params.0': {
+            'name.name': 'x',
+            'typeAnnotation.type': 'StringTypeAnnotation',
+          },
+          'params.1': {
+            'name': null,
+            'typeAnnotation.type': 'NumberTypeAnnotation',
+          },
+        }
+      },
+      'type A = (...Array<string>) => void': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'rest': {
+            'name': null,
+            'typeAnnotation.type': 'GenericTypeAnnotation',
+            'typeAnnotation.typeParameters.params.0.type': 'StringTypeAnnotation',
+          },
+        }
+      },
+      'type A = (Array<string>, ...Array<string>) => void': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params.0': {
+            'name': null,
+            'typeAnnotation.type': 'GenericTypeAnnotation',
+            'typeAnnotation.typeParameters.params.0.type': 'StringTypeAnnotation',
+          },
+          'rest': {
+            'name': null,
+            'typeAnnotation.type': 'GenericTypeAnnotation',
+            'typeAnnotation.typeParameters.params.0.type': 'StringTypeAnnotation',
+          },
+        }
+      },
+      // Non-anonymous function types are allowed as arrow function return types
+      'var f = (x): (x: number) => 123 => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation.type': 'FunctionTypeAnnotation',
+          'body.value': 123,
+        }
+      },
+      // Anonymous function types are disallowed as arrow function return types
+      // So the `=>` clearly belongs to the arrow function
+      'var f = (): (number) => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation.type': 'NumberTypeAnnotation',
+          'body.value': 123,
+        }
+      },
+      'var f = (): string | (number) => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation': {
+            'type': 'UnionTypeAnnotation',
+            'types.1.type': 'NumberTypeAnnotation',
+          },
+          'body.value': 123,
+        }
+      },
+      // You can write anonymous function types as arrow function return types
+      // if you wrap them in parens
+      'var f = (x): ((number) => 123) => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation.type': 'FunctionTypeAnnotation',
+          'body.value': 123,
+        }
+      },
+    },
+    'Invalid Function Types with Anonymous Parameters': {
+      // Anonymous function types are disallowed as arrow function return types
+      'var f = (x): (number) => 123 => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation.type': 'NumberTypeAnnotation',
+        },
+        'errors.0': {
+          'loc.start.column': 29,
+          'loc.end.column': 31,
+          'message': 'Unexpected token =>'
+        },
+      },
+      'var f = (x): string | (number) => 123 => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation.type': 'UnionTypeAnnotation',
+        },
+        'errors.0': {
+          'loc.start.column': 38,
+          'loc.end.column': 40,
+          'message': 'Unexpected token =>'
+        },
+      },
+      'var f = (x): ?(number) => 123 => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation.type': 'NullableTypeAnnotation',
+        },
+        'errors.0': {
+          'loc.start.column': 30,
+          'loc.end.column': 32,
+          'message': 'Unexpected token =>'
+        },
+      },
+    },
+    'Function Types with Anonymous Parameters and no Parens': {
+      'type A = string => void': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params.0': {
+            'name': null,
+            'typeAnnotation.type': 'StringTypeAnnotation',
+          },
+        }
+      },
+      'type A = Array<string> => void': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params.0': {
+            'name': null,
+            'typeAnnotation.type': 'GenericTypeAnnotation',
+            'typeAnnotation.typeParameters.params.0.type': 'StringTypeAnnotation',
+          },
+        }
+      },
+      // Anonymous function types are disallowed as arrow function return types
+      // So the `=>` clearly belongs to the arrow function
+      'var f = (): number => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation.type': 'NumberTypeAnnotation',
+          'body.value': 123,
+        }
+      },
+      'var f = (): string | number => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation': {
+            'type': 'UnionTypeAnnotation',
+            'types.1.type': 'NumberTypeAnnotation',
+          },
+          'body.value': 123,
+        }
+      },
+      // You can write anonymous function types as arrow function return types
+      // if you wrap them in parens
+      'var f = (x): (number => 123) => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation.type': 'FunctionTypeAnnotation',
+          'body.value': 123,
+        }
+      },
+      // string | (number => boolean)
+      'type A = string | number => boolean;': {
+        'body.0.right': {
+          'type': 'UnionTypeAnnotation',
+          'types.1': {
+            'type': 'FunctionTypeAnnotation',
+            'params': [
+              {
+                'name': null,
+                'typeAnnotation.type': 'NumberTypeAnnotation',
+              }
+            ]
+          },
+        },
+      },
+      // string & (number => boolean)
+      'type A = string & number => boolean;': {
+        'body.0.right': {
+          'type': 'IntersectionTypeAnnotation',
+          'types.1': {
+            'type': 'FunctionTypeAnnotation',
+            'params': [
+              {
+                'name': null,
+                'typeAnnotation.type': 'NumberTypeAnnotation',
+              }
+            ]
+          },
+        },
+      },
+      // (?number) => boolean
+      'type A = ?number => boolean;': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params': [
+            {
+              'name': null,
+              'typeAnnotation.type': 'NullableTypeAnnotation',
+            }
+          ]
+        },
+      },
+      // (number[]) => boolean
+      'type A = number[] => boolean;': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params': [
+            {
+              'name': null,
+              'typeAnnotation.type': 'ArrayTypeAnnotation',
+            }
+          ]
+        },
+      },
+      'type A = (string => boolean) => number': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params': [
+            {
+              'name': null,
+              'typeAnnotation.type': 'FunctionTypeAnnotation',
+            }
+          ]
+        },
+      },
+      // string => (boolean | number)
+      'type A = string => boolean | number;': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params': [
+            {
+              'name': null,
+              'typeAnnotation.type': 'StringTypeAnnotation',
+            }
+          ]
+        }
+      },
+      // Becomes string => (boolean => number)
+      'type A = string => boolean => number;': {
+        'body.0.right': {
+          'type': 'FunctionTypeAnnotation',
+          'params': [
+            {
+              'name': null,
+              'typeAnnotation.type': 'StringTypeAnnotation',
+            }
+          ],
+          'returnType': {
+            'type': 'FunctionTypeAnnotation',
+            'params': [
+              {
+                'name': null,
+                'typeAnnotation.type': 'BooleanTypeAnnotation',
+              }
+            ],
+            'returnType.type': 'NumberTypeAnnotation',
+          }
+        }
+      },
+    },
+    'Invalid Function Types with Anonymous Parameters and no Parens': {
+      // Anonymous function types are disallowed as arrow function return types
+      'var f = (x): number => 123 => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation.type': 'NumberTypeAnnotation',
+        },
+        'errors.0': {
+          'loc.start.column': 27,
+          'loc.end.column': 29,
+          'message': 'Unexpected token =>'
+        },
+      },
+      'var f = (x): string | number => 123 => 123;': {
+        'body.0.declarations.0.init': {
+          'returnType.typeAnnotation.type': 'UnionTypeAnnotation',
+        },
+        'errors.0': {
+          'loc.start.column': 36,
+          'loc.end.column': 38,
+          'message': 'Unexpected token =>'
+        },
+      },
+    },
+    'Optional indexer name': {
+      'type A = { [string]: number };': {
+        'body.0.right.indexers': [
+          {
+            'id': null,
+            'key.type': 'StringTypeAnnotation',
+            'value.type': 'NumberTypeAnnotation',
+          }
+        ]
+      },
+      'type A = { [string | boolean]: number };': {
+        'body.0.right.indexers': [
+          {
+            'id': null,
+            'key.type': 'UnionTypeAnnotation',
+            'value.type': 'NumberTypeAnnotation',
+          }
+        ]
+      },
+    },
+    'For await loops': {
+      'for await (let x of e) {}': {
+        'errors.0': {
+          'loc.start.column': 4,
+          'loc.end.column': 9,
+          'message': 'Unexpected token await'
+        }
+      },
+      'async () => { for await (let x of e) {} }': {
+        'errors': [],
+        'body.0.expression.body.body.0': {
+          'type': 'ForAwaitStatement',
+          'left.type': 'VariableDeclaration',
+          'right.type': 'Identifier',
+          'body.type': 'BlockStatement',
+        }
+      },
+      'async () => { for await (let x in e) {} }': {
+        'errors.0': {
+          'loc.start.column': 31,
+          'loc.end.column': 33,
+          'message': 'Unexpected token in'
+        }
+      },
+      'async () => { for await (let i = 0; i < e; i++) {} }': {
+        'errors.0': {
+          'loc.start.column': 25,
+          'loc.end.column': 34,
+          'message': 'Invalid left-hand side in for-of'
+        }
+      }
+    },
+    'Array literal spreads': {
+      '[1, ...rest]': {
+        'body.0.expression.elements': [
+          { 'value': 1 },
+          { 'type': 'SpreadElement' },
+        ]
+      },
+      '[1, ...rest,]': {
+        'body.0.expression.elements': [
+          { 'value': 1 },
+          { 'type': 'SpreadElement' },
+        ]
+      },
+      '[...rest, 1]': {
+        'body.0.expression.elements': [
+          { 'type': 'SpreadElement' },
+          { 'value': 1 }
+        ]
+      },
+      '[...rest, ,1]': {
+        'body.0.expression.elements': [
+          { 'type': 'SpreadElement' },
+          null,
+          { 'value': 1 }
+        ]
+      },
+    }
   }
 };

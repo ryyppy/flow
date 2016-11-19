@@ -48,15 +48,11 @@ bool.js:18
 
 bool.js:24
  24:   if (100 * false) {
-                 ^^^^^ boolean. This type is incompatible with
- 24:   if (100 * false) {
-           ^^^^^^^^^^^ number
+                 ^^^^^ boolean. The operand of an arithmetic operation must be a number.
 
 bool.js:27
  27:   if (false * 100) {
-           ^^^^^ boolean. This type is incompatible with
- 27:   if (false * 100) {
-           ^^^^^^^^^^^ number
+           ^^^^^ boolean. The operand of an arithmetic operation must be a number.
 
 bool.js:37
  37:     return x.result; // error
@@ -70,21 +66,89 @@ bool.js:44
  44:     return x.result; // error
                 ^ object type
 
+cond_prop.js:11
+ 11:   return getTypeASTName(typeAST.type); // error, BadType not a subtype of Type
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function call
+ 11:   return getTypeASTName(typeAST.type); // error, BadType not a subtype of Type
+                             ^^^^^^^^^^^^ object type. This type is incompatible with
+  9: function getTypeASTName(typeAST: Type): string {
+                                      ^^^^ union: Name | ListType | NonNullType
+  Member 1:
+    3: type Type = Name | ListType | NonNullType;
+                   ^^^^ Name
+  Error:
+    3: type Type = Name | ListType | NonNullType;
+                   ^^^^ property `kind`. Property not found in
+   11:   return getTypeASTName(typeAST.type); // error, BadType not a subtype of Type
+                               ^^^^^^^^^^^^ object type
+  Member 2:
+    3: type Type = Name | ListType | NonNullType;
+                          ^^^^^^^^ ListType
+  Error:
+    3: type Type = Name | ListType | NonNullType;
+                          ^^^^^^^^ property `kind`. Property not found in
+   11:   return getTypeASTName(typeAST.type); // error, BadType not a subtype of Type
+                               ^^^^^^^^^^^^ object type
+  Member 3:
+    3: type Type = Name | ListType | NonNullType;
+                                     ^^^^^^^^^^^ NonNullType
+  Error:
+    3: type Type = Name | ListType | NonNullType;
+                                     ^^^^^^^^^^^ property `kind`. Property not found in
+   11:   return getTypeASTName(typeAST.type); // error, BadType not a subtype of Type
+                               ^^^^^^^^^^^^ object type
+
+cond_prop.js:19
+ 19:     return x.result; // error
+                  ^^^^^^ property `result`. Property not found in
+ 19:     return x.result; // error
+                ^ object type
+
+cond_prop.js:24
+ 24:       return x.result; // error, consider { foo: "herp", done: "derp" }
+                    ^^^^^^ property `result`. Property not found in
+ 24:       return x.result; // error, consider { foo: "herp", done: "derp" }
+                  ^ object type
+
+cond_prop.js:26
+ 26:     return x.result; // error
+                  ^^^^^^ property `result`. Property not found in
+ 26:     return x.result; // error
+                ^ object type
+
+cond_prop.js:36
+ 36:         (t.bar: string); // error, consider { baz: "x", quux: "y", foo: "boom" }
+                ^^^ property `bar`. Property not found in
+ 36:         (t.bar: string); // error, consider { baz: "x", quux: "y", foo: "boom" }
+              ^ object type
+
+cond_prop.js:46
+ 46:         (t.foo: Object); // error, consider { baz: "x", quux: "y", bar: "boom" }
+                ^^^ property `foo`. Property not found in
+ 46:         (t.foo: Object); // error, consider { baz: "x", quux: "y", bar: "boom" }
+              ^ object type
+
+cond_prop.js:48
+ 48:         (t.quux: string); // error, consider { foo: {}, bar: "" }
+                ^^^^ property `quux`. Property not found in
+ 48:         (t.quux: string); // error, consider { foo: {}, bar: "" }
+              ^ object type
+
 eq.js:5
   5:     if (x == y) {} // error, string & number are not comparable (unsafe casting)
-             ^ string. Cannot be compared to
+             ^ string. This type cannot be compared to
   5:     if (x == y) {} // error, string & number are not comparable (unsafe casting)
                   ^ number
 
 eq.js:19
  19:     if (x.y == 123) {} // error
-             ^^^ string literal `bar`. Cannot be compared to
+             ^^^ string literal `bar`. This type cannot be compared to
  19:     if (x.y == 123) {} // error
                     ^^^ number
 
 eq.js:19
  19:     if (x.y == 123) {} // error
-             ^^^ string literal `foo`. Cannot be compared to
+             ^^^ string literal `foo`. This type cannot be compared to
  19:     if (x.y == 123) {} // error
                     ^^^ number
 
@@ -154,11 +218,39 @@ heap_defassign.js:73
  73:     var z: number = obj.p;      // error, (number | string) ~/~ number
                 ^^^^^^ number
 
+missing-property-cond.js:11
+ 11:     o.p2.x; // error, since o.p2's type is unknown (e.g., could be `number`)
+              ^ property `x`. Property cannot be accessed on
+ 11:     o.p2.x; // error, since o.p2's type is unknown (e.g., could be `number`)
+         ^^^^ property `p2` of unknown type
+
+missing-property-cond.js:16
+ 16:   o.p3.x; // usual error outside conditional
+         ^^ property `p3`. Property not found in
+ 16:   o.p3.x; // usual error outside conditional
+       ^ object type
+
+missing-property-cond.js:23
+ 23:     o.p4.x; // error
+              ^ property `x`. Property cannot be accessed on possibly undefined value
+ 23:     o.p4.x; // error
+         ^^^^ property `p4` does not exist
+
+missing-property-cond.js:37
+ 37:   if (o.bar) {} // error, any lookup on mixed is unsafe
+             ^^^ property `bar`. Property not found in
+ 37:   if (o.bar) {} // error, any lookup on mixed is unsafe
+           ^ mixed
+
+missing-property-cond.js:41
+ 41:   if (typeof o.bar === 'string') {} // error
+                    ^^^ property `bar`. Property not found in
+ 41:   if (typeof o.bar === 'string') {} // error
+                  ^ mixed
+
 mixed.js:8
   8:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
-  8:     takesString(x); // error
-                     ^ number. This type is incompatible with
+                     ^ number. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
@@ -170,9 +262,7 @@ mixed.js:9
 
 mixed.js:21
  21:     takesNumber(x); // error
-         ^^^^^^^^^^^^^^ function call
- 21:     takesNumber(x); // error
-                     ^ string. This type is incompatible with
+                     ^ string. This type is incompatible with the expected param type of
   3: function takesNumber(x: number) {}
                              ^^^^^^ number
 
@@ -184,9 +274,7 @@ mixed.js:22
 
 mixed.js:34
  34:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 34:     takesString(x); // error
-                     ^ boolean. This type is incompatible with
+                     ^ boolean. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
@@ -198,81 +286,61 @@ mixed.js:35
 
 mixed.js:47
  47:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 47:     takesString(x); // error
-                     ^ function. This type is incompatible with
+                     ^ function. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
 mixed.js:53
  53:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 53:     takesString(x); // error
-                     ^ null. This type is incompatible with
+                     ^ null. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
 mixed.js:53
  53:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 53:     takesString(x); // error
-                     ^ object. This type is incompatible with
+                     ^ object. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
 mixed.js:59
  59:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 59:     takesString(x); // error
-                     ^ array. This type is incompatible with
+                     ^ array. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
 mixed.js:65
  65:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 65:     takesString(x); // error
-                     ^ undefined. This type is incompatible with
+                     ^ undefined. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
 mixed.js:71
  71:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 71:     takesString(x); // error
-                     ^ null. This type is incompatible with
+                     ^ null. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
 mixed.js:77
  77:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 77:     takesString(x); // error
-                     ^ null. This type is incompatible with
+                     ^ null. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
 mixed.js:77
  77:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 77:     takesString(x); // error
-                     ^ undefined. This type is incompatible with
+                     ^ undefined. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
 mixed.js:83
  83:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 83:     takesString(x); // error
-                     ^ boolean. This type is incompatible with
+                     ^ boolean. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
 mixed.js:89
  89:     takesString(x); // error
-         ^^^^^^^^^^^^^^ function call
- 89:     takesString(x); // error
-                     ^ boolean. This type is incompatible with
+                     ^ boolean. This type is incompatible with the expected param type of
   4: function takesString(x: string) {}
                              ^^^^^^ string
 
@@ -282,23 +350,23 @@ mixed.js:97
  97:       (x['foo']: string); // error, mixed
                       ^^^^^^ string
 
-not.js:5
-  5:     x++; // should error for null, void and bool (false)
-         ^ boolean. This type is incompatible with
-  5:     x++; // should error for null, void and bool (false)
-         ^^^ number
+mixed.js:119
+119:     takesString(x[0]); // error
+                     ^^^^ mixed. This type is incompatible with the expected param type of
+  4: function takesString(x: string) {}
+                             ^^^^^^ string
 
 not.js:5
   5:     x++; // should error for null, void and bool (false)
-         ^ null. This type is incompatible with
-  5:     x++; // should error for null, void and bool (false)
-         ^^^ number
+         ^ boolean. The operand of an arithmetic operation must be a number.
 
 not.js:5
   5:     x++; // should error for null, void and bool (false)
-         ^ undefined. This type is incompatible with
+         ^ null. The operand of an arithmetic operation must be a number.
+
+not.js:5
   5:     x++; // should error for null, void and bool (false)
-         ^^^ number
+         ^ undefined. The operand of an arithmetic operation must be a number.
 
 not.js:5
   5:     x++; // should error for null, void and bool (false)
@@ -350,15 +418,11 @@ not.js:47
 
 null.js:4
   4:   if (100 * null) {
-                 ^^^^ null. This type is incompatible with
-  4:   if (100 * null) {
-           ^^^^^^^^^^ number
+                 ^^^^ null. The operand of an arithmetic operation must be a number.
 
 null.js:7
   7:   if (null * 100) {
-           ^^^^ null. This type is incompatible with
-  7:   if (null * 100) {
-           ^^^^^^^^^^ number
+           ^^^^ null. The operand of an arithmetic operation must be a number.
 
 number.js:8
   8:       (x: void); // error
@@ -564,10 +628,11 @@ string.js:117
 115:   function(x: string): "" {
                             ^^ string literal ``
 
-super_member.js:12
- 12:     if (super.prop) {
-                   ^^^^ property `prop`. Property cannot be accessed on
-Object
+super_member.js:13
+ 13:       return super.prop; // error, unknown type passed to string expected
+                  ^^^^^^^^^^ property `prop` of unknown type. This type is incompatible with the expected return type of
+ 11:   test(): string {
+               ^^^^^^ string
 
 switch.js:8
   8:       return text; // error, should return string
@@ -589,9 +654,7 @@ switch.js:37
 
 switch.js:51
  51:       return (text++) + '';
-                   ^^^^ string. This type is incompatible with
- 51:       return (text++) + '';
-                   ^^^^^^ number
+                   ^^^^ string. The operand of an arithmetic operation must be a number.
 
 tagged_union.js:20
  20:     return x.prop1.charAt(0); // typeAST: Node1, but x.prop1 may be undefined
@@ -643,13 +706,13 @@ tagged_union.js:94
 
 tagged_union.js:99
  99:     if (x.kind === (null).toString()) {} // error, method on null
-                         ^^^^^^^^^^^^^^^^ call of method `toString`. Method cannot be called on possibly null value
+                        ^^^^^^^^^^^^^^^^^ call of method `toString`. Method cannot be called on possibly null value
  99:     if (x.kind === (null).toString()) {} // error, method on null
                          ^^^^ null
 
 tagged_union.js:100
 100:     if ({kind: 1}.kind === (null).toString()) {} // error, method on null
-                                 ^^^^^^^^^^^^^^^^ call of method `toString`. Method cannot be called on possibly null value
+                                ^^^^^^^^^^^^^^^^^ call of method `toString`. Method cannot be called on possibly null value
 100:     if ({kind: 1}.kind === (null).toString()) {} // error, method on null
                                  ^^^^ null
 
@@ -658,12 +721,6 @@ tagged_union.js:109
                ^^^^^^ property `legnth`. Property not found in
 109:     if (x.legnth === 0) {} // error, typo
              ^ Array
-
-tagged_union.js:109
-109:     if (x.legnth === 0) {} // error, typo
-               ^^^^^^ property `legnth`. Property not found in
-109:     if (x.legnth === 0) {} // error, typo
-             ^^^^^^^^ Array
 
 tagged_union.js:111
 111:     if (y.legnth === 0) {} // error, typo
@@ -741,51 +798,35 @@ typeof.js:61
 
 undef.js:31
  31:     var y = x * 1000;
-                 ^ null. This type is incompatible with
- 31:     var y = x * 1000;
-                 ^^^^^^^^ number
+                 ^ null. The operand of an arithmetic operation must be a number.
 
 undef.js:38
  38:     var y = x * 1000;
-                 ^ null. This type is incompatible with
- 38:     var y = x * 1000;
-                 ^^^^^^^^ number
+                 ^ null. The operand of an arithmetic operation must be a number.
 
 undef.js:44
  44:     var y = x.x * 1000;
-                 ^^^ null. This type is incompatible with
- 44:     var y = x.x * 1000;
-                 ^^^^^^^^^^ number
+                 ^^^ null. The operand of an arithmetic operation must be a number.
 
 undef.js:51
  51:     var y = x.x * 1000;
-                 ^^^ null. This type is incompatible with
- 51:     var y = x.x * 1000;
-                 ^^^^^^^^^^ number
+                 ^^^ null. The operand of an arithmetic operation must be a number.
 
 undef.js:69
  69:     var b = y * 1000; // error
-                 ^ null. This type is incompatible with
- 69:     var b = y * 1000; // error
-                 ^^^^^^^^ number
+                 ^ null. The operand of an arithmetic operation must be a number.
 
 undef.js:69
  69:     var b = y * 1000; // error
-                 ^ undefined. This type is incompatible with
- 69:     var b = y * 1000; // error
-                 ^^^^^^^^ number
+                 ^ undefined. The operand of an arithmetic operation must be a number.
 
 undef.js:74
  74:   if (100 * undefined) {
-                 ^^^^^^^^^ undefined. This type is incompatible with
- 74:   if (100 * undefined) {
-           ^^^^^^^^^^^^^^^ number
+                 ^^^^^^^^^ undefined. The operand of an arithmetic operation must be a number.
 
 undef.js:77
  77:   if (undefined * 100) {
-           ^^^^^^^^^ undefined. This type is incompatible with
- 77:   if (undefined * 100) {
-           ^^^^^^^^^^^^^^^ number
+           ^^^^^^^^^ undefined. The operand of an arithmetic operation must be a number.
 
 union.js:7
   7:     x[0]; // error on boolean
@@ -807,63 +848,43 @@ union.js:19
 
 void.js:31
  31:     var y = x * 1000;
-                 ^ null. This type is incompatible with
- 31:     var y = x * 1000;
-                 ^^^^^^^^ number
+                 ^ null. The operand of an arithmetic operation must be a number.
 
 void.js:38
  38:     var y = x * 1000;
-                 ^ null. This type is incompatible with
- 38:     var y = x * 1000;
-                 ^^^^^^^^ number
+                 ^ null. The operand of an arithmetic operation must be a number.
 
 void.js:44
  44:     var y = x.x * 1000;
-                 ^^^ null. This type is incompatible with
- 44:     var y = x.x * 1000;
-                 ^^^^^^^^^^ number
+                 ^^^ null. The operand of an arithmetic operation must be a number.
 
 void.js:51
  51:     var y = x.x * 1000;
-                 ^^^ null. This type is incompatible with
- 51:     var y = x.x * 1000;
-                 ^^^^^^^^^^ number
+                 ^^^ null. The operand of an arithmetic operation must be a number.
 
 void.js:56
  56:   if (x !== null && x !== void(x * 1000)) {
-                                    ^ undefined. This type is incompatible with
- 56:   if (x !== null && x !== void(x * 1000)) {
-                                    ^^^^^^^^ number
+                                    ^ undefined. The operand of an arithmetic operation must be a number.
 
 void.js:62
  62:   if (x === null || x === void(x * 1000)) {
-                                    ^ undefined. This type is incompatible with
- 62:   if (x === null || x === void(x * 1000)) {
-                                    ^^^^^^^^ number
+                                    ^ undefined. The operand of an arithmetic operation must be a number.
 
 void.js:69
  69:   if (x.x !== null && x.x !== void(x.x * 1000)) {
-                                        ^^^ undefined. This type is incompatible with
- 69:   if (x.x !== null && x.x !== void(x.x * 1000)) {
-                                        ^^^^^^^^^^ number
+                                        ^^^ undefined. The operand of an arithmetic operation must be a number.
 
 void.js:75
  75:   if (x.x === null || x.x === void(x.x * 1000)) {
-                                        ^^^ undefined. This type is incompatible with
- 75:   if (x.x === null || x.x === void(x.x * 1000)) {
-                                        ^^^^^^^^^^ number
+                                        ^^^ undefined. The operand of an arithmetic operation must be a number.
 
 void.js:82
  82:   if (100 * void(0)) {
-                 ^^^^^^ undefined. This type is incompatible with
- 82:   if (100 * void(0)) {
-           ^^^^^^^^^^^^^ number
+                 ^^^^^^ undefined. The operand of an arithmetic operation must be a number.
 
 void.js:85
  85:   if (void(0) * 100) {
-           ^^^^^^ undefined. This type is incompatible with
- 85:   if (void(0) * 100) {
-           ^^^^^^^^^^^^^ number
+           ^^^^^^ undefined. The operand of an arithmetic operation must be a number.
 
 
-Found 141 errors
+Found 153 errors

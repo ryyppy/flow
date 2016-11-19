@@ -10,7 +10,7 @@
 
 open Utils_js
 
-module LeaderHeap = SharedMem.WithCache (Loc.FilenameKey) (struct
+module LeaderHeap = SharedMem_js.WithCache (Loc.FilenameKey) (struct
   type t = filename
   let prefix = Prefix.make()
   let description = "Leader"
@@ -27,12 +27,12 @@ let check_require (r, resolved_r, cx) =
       try SMap.find_unsafe r (Context.require_loc cx)
       with Not_found -> raise (Key_not_found ("Context.require_loc", r))
     in
-    let reason = Reason.mk_reason r loc in
+    let reason = Reason.mk_reason (Reason.RCustom r) loc in
 
     let m_name = Modulename.to_string resolved_r in
     let tvar = Flow_js.mk_tvar cx reason in
     Flow_js.lookup_builtin cx (Reason.internal_module_name m_name)
-      reason (Some (Reason.builtin_reason m_name)) tvar
+      reason (Type.Strict (Reason.builtin_reason (Reason.RCustom m_name))) tvar
 
 let add_decl (r, resolved_r, cx) declarations =
   (r, resolved_r, cx) :: declarations
@@ -54,7 +54,10 @@ let add_decl (r, resolved_r, cx) declarations =
    are labeled with the requires they denote (when implementations of such
    requires are found).
 
-   (d) decls: edges between contexts in component_cxs and libraries, classified
+   (d) res: edges between contexts in component_cxs and resource files, labeled
+   with the requires they denote.
+
+   (e) decls: edges between contexts in component_cxs and libraries, classified
    by requires (when implementations of such requires are not found).
 
    The arguments (b), (c), (d) are passed to `merge_component_strict`, and
@@ -68,7 +71,8 @@ let merge_strict_context ~options cache component_cxs =
         try SMap.find_unsafe r require_locs
         with Not_found -> raise (Key_not_found ("require_locs", r))
       in
-      let resolved_r = Module_js.find_resolved_module ~options cx loc r in
+      let resolved_r = Module_js.find_resolved_module ~audit:Expensive.ok
+        ~options cx loc r in
       check_require (r, resolved_r, cx);
       add_decl (r, resolved_r, cx)
     ) (Context.required cx) required
@@ -77,19 +81,22 @@ let merge_strict_context ~options cache component_cxs =
 
   let sig_cache = new Context_cache.sig_context_cache in
 
-  let orig_sig_cxs, sig_cxs, impls, decls =
-    List.fold_left (fun (orig_sig_cxs, sig_cxs, impls, decls) req ->
+  let orig_sig_cxs, sig_cxs, impls, res, decls =
+    List.fold_left (fun (orig_sig_cxs, sig_cxs, impls, res, decls) req ->
       let r, resolved_r, cx_to = req in
-      Module_js.(match get_module_file resolved_r with
+      Module_js.(match get_module_file Expensive.ok resolved_r with
+      | Some (Loc.ResourceFile f) ->
+          orig_sig_cxs, sig_cxs,
+          impls, (r, f, cx_to) :: res, decls
       | Some file ->
-          let info = get_module_info file in
+          let info = get_module_info ~audit:Expensive.ok file in
           if info.checked && info.parsed then
             (* checked implementation exists *)
             let impl sig_cx = sig_cx, r, info._module, cx_to in
             begin match cache#find file with
             | Some sig_cx ->
                 orig_sig_cxs, sig_cxs,
-                (impl sig_cx) :: impls, decls
+                (impl sig_cx) :: impls, res, decls
             | None ->
                 let file =
                   try LeaderHeap.find_unsafe file
@@ -99,30 +106,33 @@ let merge_strict_context ~options cache component_cxs =
                 begin match sig_cache#find file with
                 | Some sig_cx ->
                     orig_sig_cxs, sig_cxs,
-                    (impl sig_cx) :: impls, decls
+                    (impl sig_cx) :: impls, res, decls
                 | None ->
-                    let orig_sig_cx, sig_cx = sig_cache#read file in
+                    let orig_sig_cx, sig_cx =
+                      sig_cache#read ~audit:Expensive.ok file in
                     orig_sig_cx::orig_sig_cxs, sig_cx::sig_cxs,
-                    (impl sig_cx) :: impls,
-                    decls
+                    (impl sig_cx) :: impls, res, decls
                 end
             end
           else
             (* unchecked implementation exists *)
             (* use required name as resolved name, for lib lookups *)
             let fake_resolved = Modulename.String r in
-            orig_sig_cxs, sig_cxs, impls, (r, fake_resolved, cx_to) :: decls
+            orig_sig_cxs, sig_cxs,
+            impls, res, (r, fake_resolved, cx_to) :: decls
       | None ->
           (* implementation doesn't exist *)
-          orig_sig_cxs, sig_cxs, impls, (r, resolved_r, cx_to) :: decls
+          orig_sig_cxs, sig_cxs,
+          impls, res, (r, resolved_r, cx_to) :: decls
       )
-    ) ([], [], [], []) required
+    ) ([], [], [], [], []) required
   in
 
-  let orig_master_cx, master_cx = sig_cache#read Loc.Builtins in
+  let orig_master_cx, master_cx =
+    sig_cache#read ~audit:Expensive.ok Loc.Builtins in
 
   Merge_js.merge_component_strict
-    component_cxs sig_cxs impls decls master_cx;
+    component_cxs sig_cxs impls res decls master_cx;
   Merge_js.restore cx orig_sig_cxs orig_master_cx;
 
   ()
@@ -146,10 +156,11 @@ let merge_strict_component ~options (component: filename list) =
 
      It also follows when file is checked, other_files must be checked too!
   *)
-  let info = Module_js.get_module_info file in
+  let info = Module_js.get_module_info ~audit:Expensive.ok file in
   if info.Module_js.checked then (
     let cache = new Context_cache.context_cache in
-    let component_cxs = List.map cache#read component in
+    let component_cxs =
+      List.map (cache#read ~audit:Expensive.ok) component in
 
     merge_strict_context ~options cache component_cxs;
 
@@ -157,7 +168,8 @@ let merge_strict_component ~options (component: filename list) =
     let cx = List.hd component_cxs in
     let errors = Context.errors cx in
     Context.remove_all_errors cx;
-    Context_cache.add_sig cx;
+    Context.clear_intermediates cx;
+    Context_cache.add_sig ~audit:Expensive.ok cx;
     file, errors
   )
   else file, Errors.ErrorSet.empty
@@ -176,9 +188,10 @@ let merge_strict_job ~options (merged, errsets) (components: filename list list)
         file :: merged, errors :: errsets
       )
     with
-    | SharedMem.Out_of_shared_memory
-    | SharedMem.Hash_table_full
-    | SharedMem.Dep_table_full as exc -> raise exc
+    | SharedMem_js.Out_of_shared_memory
+    | SharedMem_js.Heap_full
+    | SharedMem_js.Hash_table_full
+    | SharedMem_js.Dep_table_full as exc -> raise exc
     (* A catch all suppression is probably a bad idea... *)
     | exc ->
       let file = List.hd component in
@@ -194,9 +207,9 @@ let merge_strict ~options ~workers ~save_errors dependency_graph partition =
   (* NOTE: master_cx will only be saved once per server lifetime *)
   let master_cx = Init_js.get_master_cx options in
   (* TODO: we probably don't need to save master_cx in ContextHeap *)
-  Context_cache.add master_cx;
+  Context_cache.add ~audit:Expensive.ok master_cx;
   (* store master signature context to heap *)
-  Context_cache.add_sig master_cx;
+  Context_cache.add_sig ~audit:Expensive.ok master_cx;
   (* make a map from component leaders to components *)
   let component_map =
     IMap.fold (fun _ components acc ->

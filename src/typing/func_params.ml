@@ -24,10 +24,14 @@ let empty = {
 
 (* Ast.Function.t -> Func_params.t *)
 let mk cx type_params_map ~expr func =
-  let add_param params pattern default = Ast.Pattern.(
+  let add_param_with_default params pattern default = Ast.Pattern.(
     match pattern with
-    | loc, Identifier (_, { Ast.Identifier.name; typeAnnotation; optional }) ->
-      let reason = mk_reason (Utils.spf "parameter `%s`" name) loc in
+    | loc, Identifier { Ast.Pattern.Identifier.
+        name = (_, name);
+        typeAnnotation;
+        optional;
+      } ->
+      let reason = mk_reason (RParameter name) loc in
       let t = Anno.mk_type_annotation cx type_params_map reason typeAnnotation
       in (match default with
       | None ->
@@ -46,7 +50,7 @@ let mk cx type_params_map ~expr func =
         { list = Simple (OptionalT t, binding) :: params.list;
           defaults = SMap.add name (Default.Expr expr) params.defaults })
     | loc, _ ->
-      let reason = mk_reason "destructuring" loc in
+      let reason = mk_reason RDestructuring loc in
       let typeAnnotation = type_of_pattern pattern in
       let t = typeAnnotation
         |> Anno.mk_type_annotation cx type_params_map reason in
@@ -73,46 +77,63 @@ let mk cx type_params_map ~expr func =
       let param = Complex (t, List.rev !rev_bindings) in
       { list = param :: params.list; defaults = !defaults }
   ) in
-  let add_rest params =
-    function loc, { Ast.Identifier.name; typeAnnotation; _ } ->
-      let reason = mk_reason (Utils.spf "rest parameter `%s`" name) loc in
+  let add_rest params pattern =
+    match pattern with
+    | loc, Ast.Pattern.Identifier { Ast.Pattern.Identifier.
+        name = (_, name);
+        typeAnnotation;
+        _;
+      } ->
+      let reason = mk_reason (RRestParameter name) loc in
       let t =
         Anno.mk_type_annotation cx type_params_map reason typeAnnotation
       in
       let param = Rest (Anno.mk_rest cx t, (name, t, loc)) in
       { params with list =  param :: params.list }
+    | loc, _ ->
+      Flow_error.(add_output cx
+        (EInternal (loc, RestArgumentNotIdentifierPattern)));
+      params
   in
-  let {Ast.Function.params; defaults; rest; _} = func in
-  let defaults =
-    if defaults = [] && params <> []
-    then List.map (fun _ -> None) params
-    else defaults
+  let add_param params pattern =
+    match pattern with
+    | _, Ast.Pattern.Assignment { Ast.Pattern.Assignment.left; right; } ->
+      add_param_with_default params left (Some right)
+    | _ ->
+      add_param_with_default params pattern None
   in
-  let params = List.fold_left2 add_param empty params defaults in
+  let {Ast.Function.params = (params, rest); _} = func in
+  let params = List.fold_left add_param empty params in
   let params = match rest with
-  | Some ident -> add_rest params ident
-  | None -> params
+    | Some (_, { Ast.Function.RestElement.argument }) ->
+      add_rest params argument
+    | None -> params
   in
   { params with list = List.rev params.list }
 
 (* Ast.Type.Function.t -> Func_params.t *)
 let convert cx type_params_map func = Ast.Type.Function.(
   let add_param params (loc, {Param.name; typeAnnotation; optional; _}) =
-    let _, {Ast.Identifier.name; _} = name in
+    let name = match name with
+    | None -> "_"
+    | Some (_, name) -> name in
     let t = Anno.convert cx type_params_map typeAnnotation in
     let t = if optional then OptionalT t else t in
     let binding = name, t, loc in
     { params with list = Simple (t, binding) :: params.list }
   in
   let add_rest params (loc, {Param.name; typeAnnotation; _}) =
-    let _, {Ast.Identifier.name; _} = name in
+    let name = match name with
+    | None -> "_"
+    | Some (_, name) -> name in
     let t = Anno.convert cx type_params_map typeAnnotation in
     let param = Rest (Anno.mk_rest cx t, (name, t, loc)) in
     { params with list = param :: params.list }
   in
-  let params = List.fold_left add_param empty func.params in
-  let params = match func.rest with
-  | Some ident -> add_rest params ident
+  let (params, rest) = func.params in
+  let params = List.fold_left add_param empty params in
+  let params = match rest with
+  | Some (_, { RestParam.argument }) -> add_rest params argument
   | None -> params
   in
   { params with list = List.rev params.list }

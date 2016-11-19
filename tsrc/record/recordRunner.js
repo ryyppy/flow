@@ -1,15 +1,16 @@
 /* @flow */
 
 import colors from 'colors/safe';
-import {join} from 'path';
+import {isAbsolute, join} from 'path';
 import {format} from 'util';
 
 import {readFile, writeFile} from './../async';
 import Builder from '../test/builder';
 import {findTestsByName, findTestsByRun} from '../test/findTests';
 import parser from 'flow-parser';
+import {loadSuite} from '../test/findTests';
 import RunQueue from '../test/RunQueue';
-import {testsDir} from '../constants';
+import {getTestsDir} from '../constants';
 
 import type {Args} from './recordCommand';
 
@@ -97,9 +98,16 @@ export default async function(args: Args): Promise<void> {
     suites = await findTestsByName(args.suites);
   }
 
-  const runQueue = new RunQueue(args.bin, args.parallelism, false, suites, builder);
+  const loadedSuites = {};
+  for (const suiteName of suites) {
+    loadedSuites[suiteName] = loadSuite(suiteName);
+  }
+
+  const runQueue = new RunQueue(args.bin, args.parallelism, false, loadedSuites, builder);
 
   await runQueue.go();
+
+  builder.cleanup();
 
   let totalTests = 0, totalSteps = 0, testNum = 0, stepNum = 0, suiteName = 0;
 
@@ -165,7 +173,14 @@ export default async function(args: Args): Promise<void> {
             if (result.type === "fail") {
               const assertLoc = result.assertLoc;
               if (assertLoc) {
-                const filename = join(testsDir, suiteName, assertLoc.filename);
+                let filename = assertLoc.filename;
+                if (!isAbsolute(filename)) {
+                  const filename = join(
+                    getTestsDir(),
+                    suiteName,
+                    assertLoc.filename,
+                  );
+                }
                 const code = await readFile(filename);
                 const ast = parser.parse(code, {});
                 const range = assertLoc && dfsForRange(ast, assertLoc.line, assertLoc.column);

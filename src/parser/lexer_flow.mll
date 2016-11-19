@@ -21,6 +21,8 @@ module Token = struct
     (* Syntax *)
     | T_LCURLY
     | T_RCURLY
+    | T_LCURLYBAR
+    | T_RCURLYBAR
     | T_LPAREN
     | T_RPAREN
     | T_LBRACKET
@@ -82,6 +84,7 @@ module Token = struct
     | T_OF
     | T_ASYNC
     | T_AWAIT
+    | T_CHECKS
     (* Operators *)
     | T_RSHIFT3_ASSIGN
     | T_RSHIFT_ASSIGN
@@ -132,6 +135,8 @@ module Token = struct
     | T_JSX_TEXT of (Loc.t * string * string) (* loc, value, raw *)
     (* Type primitives *)
     | T_ANY_TYPE
+    | T_MIXED_TYPE
+    | T_EMPTY_TYPE
     | T_BOOLEAN_TYPE
     | T_NUMBER_TYPE
     | T_NUMBER_SINGLETON_TYPE of number_type * float
@@ -209,8 +214,11 @@ module Token = struct
     | T_OF -> "T_OF"
     | T_ASYNC -> "T_ASYNC"
     | T_AWAIT -> "T_AWAIT"
+    | T_CHECKS -> "T_CHECKS"
     | T_LCURLY -> "T_LCURLY"
     | T_RCURLY -> "T_RCURLY"
+    | T_LCURLYBAR -> "T_LCURLYBAR"
+    | T_RCURLYBAR -> "T_RCURLYBAR"
     | T_LPAREN -> "T_LPAREN"
     | T_RPAREN -> "T_RPAREN"
     | T_LBRACKET -> "T_LBRACKET"
@@ -269,6 +277,8 @@ module Token = struct
     | T_JSX_TEXT _ -> "T_JSX_TEXT"
     (* Type primitives *)
     | T_ANY_TYPE -> "T_ANY_TYPE"
+    | T_MIXED_TYPE -> "T_MIXED_TYPE"
+    | T_EMPTY_TYPE -> "T_EMPTY_TYPE"
     | T_BOOLEAN_TYPE -> "T_BOOLEAN_TYPE"
     | T_NUMBER_TYPE -> "T_NUMBER_TYPE"
     | T_NUMBER_SINGLETON_TYPE _ -> "T_NUMBER_SINGLETON_TYPE"
@@ -510,11 +520,11 @@ end = struct
     let todo_str = f.todo
       |> List.map Char.escaped
       |> String.concat "" in
-    let exponent = 
+    let exponent =
       try int_of_string todo_str
       with Failure _ -> raise No_good in
     { f with exponent; todo = [] }
-      
+
   let rec parse_body f =
     match f.todo with
     | [] -> f
@@ -527,7 +537,7 @@ end = struct
     | ('p' | 'P')::_ ->
         parse_exponent (eat f)
     | c::_ ->
-        let ref_char_code = 
+        let ref_char_code =
           if c >= '0' && c <= '9'
           then Char.code '0'
           else if c >= 'A' && c <= 'F'
@@ -541,14 +551,14 @@ end = struct
         | Some e -> Some (e - 4) in
         let mantissa = (f.mantissa lsl 4) + value in
         parse_body { (eat f) with decimal_exponent; mantissa; }
-      
+
   let float_of_t f =
     assert (f.todo = []);
     let ret = float_of_int f.mantissa in
     let exponent = match f.decimal_exponent with
     | None -> f.exponent
     | Some decimal_exponent -> f.exponent + decimal_exponent in
-    let ret = 
+    let ret =
       if exponent = 0
       then ret
       else ret ** (float_of_int exponent) in
@@ -559,7 +569,7 @@ end = struct
   let float_of_string str =
     try Pervasives.float_of_string str
     with e when Sys.win32 ->
-      try 
+      try
         start str
           |> parse_sign
           |> parse_hex_symbol
@@ -719,6 +729,8 @@ end
       "static",  T_STATIC;
       "typeof",  T_TYPEOF;
       "any",     T_ANY_TYPE;
+      "mixed",   T_MIXED_TYPE;
+      "empty",   T_EMPTY_TYPE;
       "bool",    T_BOOLEAN_TYPE;
       "boolean", T_BOOLEAN_TYPE;
       "true",    T_TRUE;
@@ -1053,8 +1065,8 @@ and type_token env = parse
   | (neg? as neg) (legacyoctnumber as num)
       { env, mk_num_singleton LEGACY_OCTAL num neg }
   | (neg? as neg) (hexnumber as num) (non_hex_letter alphanumeric* as w)
-      { 
-        let env, singleton = 
+      {
+        let env, singleton =
           try env, mk_num_singleton NORMAL num neg
           with _ when Sys.win32 ->
             let loc = loc_of_lexbuf env lexbuf in
@@ -1063,7 +1075,7 @@ and type_token env = parse
         illegal_number env lexbuf w singleton
       }
   | (neg? as neg) (hexnumber as num)
-      { 
+      {
         try env, mk_num_singleton NORMAL num neg
         with _ when Sys.win32 ->
           let loc = loc_of_lexbuf env lexbuf in
@@ -1086,11 +1098,14 @@ and type_token env = parse
                          try env, Hashtbl.find type_keywords word
                          with Not_found -> env, T_IDENTIFIER
                        }
+  | "%checks"          { env, T_CHECKS }
   (* Syntax *)
   | "["                { env, T_LBRACKET }
   | "]"                { env, T_RBRACKET }
   | "{"                { env, T_LCURLY }
   | "}"                { env, T_RCURLY }
+  | "{|"               { env, T_LCURLYBAR }
+  | "|}"               { env, T_RCURLYBAR }
   | "("                { env, T_LPAREN }
   | ")"                { env, T_RPAREN }
   | "..."              { env, T_ELLIPSIS }
@@ -1125,6 +1140,7 @@ and type_token env = parse
   (* Variance annotations *)
   | '+'                { env, T_PLUS }
   | '-'                { env, T_MINUS }
+
   (* Others *)
   | eof                { let env =
                            if is_in_comment_syntax env then

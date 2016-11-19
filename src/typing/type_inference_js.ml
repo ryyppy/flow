@@ -38,14 +38,16 @@ let infer_core cx statements =
     statements |> Statement.toplevel_decls cx;
     statements |> Statement.toplevels cx;
   with
+  | Abnormal.Exn Abnormal.Throw ->
+    (* throw is allowed as a top-level statement *)
+    ()
   | Abnormal.Exn _ ->
-    let msg = "abnormal control flow" in
-    FlowError.add_warning cx
-      (Loc.({ none with source = Some (Context.file cx) }), [msg])
+    (* should never happen *)
+    let loc = Loc.({ none with source = Some (Context.file cx) }) in
+    FlowError.(add_output cx (EInternal (loc, AbnormalControlFlow)))
   | exc ->
-    let msg = Utils.fmt_exc exc in
-    FlowError.add_warning cx
-      (Loc.({ none with source = Some (Context.file cx) }), [msg])
+    let loc = Loc.({ none with source = Some (Context.file cx) }) in
+    FlowError.(add_output cx (EInternal (loc, UncaughtException exc)))
 
 (* There's a .flowconfig option to specify suppress_comments regexes. Any
  * comments that match those regexes will suppress any errors on the next line
@@ -72,13 +74,18 @@ let infer_ast ~metadata ~filename ~module_name ast =
 
   let _, statements, comments = ast in
 
-  let cx = Flow_js.fresh_context metadata filename module_name in
+  let cx =
+    Flow_js.fresh_context metadata filename module_name
+  in
   let checked = Context.is_checked cx in
 
   let exported_module_name = Modulename.to_string module_name in
   let reason_exports_module =
-    Reason.reason_of_string (
-      Utils.spf "exports of module `%s`" exported_module_name) in
+    let desc = Reason.RCustom (
+      Utils.spf "exports of module `%s`" exported_module_name
+    ) in
+    Reason.locationless_reason desc
+  in
 
   let local_exports_var = Flow_js.mk_tvar cx reason_exports_module in
 
@@ -93,7 +100,9 @@ let infer_ast ~metadata ~filename ~module_name ast =
       (Entry.new_var
         ~loc:(Reason.loc_of_reason reason_exports_module)
         ~specific:(Type.EmptyT (
-          Reason.replace_reason "undefined exports" reason_exports_module))
+          Reason.replace_reason_const
+            (Reason.RCustom "undefined exports")
+            reason_exports_module))
         (Type.AnyT reason_exports_module))
       scope;
 
@@ -102,15 +111,14 @@ let infer_ast ~metadata ~filename ~module_name ast =
 
   Env.init_env cx module_scope;
 
-  let reason = Reason.mk_reason "exports" Loc.({
+  let reason = Reason.mk_reason (Reason.RCustom "exports") Loc.({
     none with source = Some filename
   }) in
 
+  let initial_module_t = ImpExp.module_t_of_cx cx in
   if checked then (
     let init_exports = Flow.mk_object cx reason in
     ImpExp.set_module_exports cx reason init_exports;
-
-    let initial_module_t = ImpExp.exports cx in
 
     (* infer *)
     Flow_js.flow_t cx (init_exports, local_exports_var);
@@ -119,11 +127,11 @@ let infer_ast ~metadata ~filename ~module_name ast =
     scan_for_suppressions cx comments;
 
     let module_t = Context.(
-      match Context.module_exports_type cx with
+      match Context.module_kind cx with
       (* CommonJS with a clobbered module.exports *)
       | CommonJSModule(Some(loc)) ->
         let module_exports_t = ImpExp.get_module_exports cx reason in
-        let reason = Reason.mk_reason "exports" loc in
+        let reason = Reason.mk_reason (Reason.RCustom "exports") loc in
         ImpExp.mk_commonjs_module_t cx reason_exports_module
           reason module_exports_t
 
@@ -137,7 +145,7 @@ let infer_ast ~metadata ~filename ~module_name ast =
     ) in
     Flow_js.flow_t cx (module_t, initial_module_t)
   ) else (
-    Flow_js.unify cx (ImpExp.exports cx) Type.AnyT.t
+    Flow_js.unify cx initial_module_t Type.AnyT.t
   );
 
   (* insist that whatever type flows into exports is fully annotated *)

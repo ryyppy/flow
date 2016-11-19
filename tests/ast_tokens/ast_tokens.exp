@@ -412,8 +412,6 @@
             "range":[196,210],
             "id":null,
             "params":[],
-            "defaults":[],
-            "rest":null,
             "body":{
               "type":"Literal",
               "loc":{"source":null,"start":{"line":8,"column":20},"end":{"line":8,"column":22}},
@@ -423,6 +421,7 @@
             },
             "async":true,
             "generator":false,
+            "predicate":null,
             "expression":true,
             "returnType":null,
             "typeParameters":null

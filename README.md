@@ -10,30 +10,47 @@ Flow works with:
 
 * Mac OS X
 * Linux (64-bit)
+* Windows (64-bit)
 
-There are binary distributions for Mac OS X and many variants of Linux; you can also build it from source on almost any 64-bit Linux variant.
+There are [binary distributions](https://github.com/facebook/flow/releases) for each of these platforms and you can also build it from source on any of them as well.
 
 ## Installing Flow
 
 Flow is simple to install: all you need is the `flow` binary on your PATH and you're good to go.
 
-### Using Homebrew
 
-Installing Flow with [Homebrew](http://brew.sh/) package manager:
+### Installing Flow Per Project
+
+The recommended way to install Flow is via the [`flow-bin`](https://www.npmjs.com/package/flow-bin) `npm` package. Adding `flow-bin` to your project's `package.json`:
+
+- provides a smoother upgrade experience, since the correct version of Flow is automatically used based on the revision you check out
+- installs Flow as part of your existing `npm install` workflow
+- lets you use different versions of Flow on different projects
 
 ```
-brew install flow
+npm install --save-dev flow-bin
+node_modules/.bin/flow
 ```
 
-To ensure you get the latest version of Flow, update your Homebrew with:
+### Installing Flow Globally
+
+Although not recommended, you can also install Flow globally (for example, perhaps you don't use `npm` or `package.json`).
+
+The best way to install globally is via `flow-bin`:
+
+```
+npm install -g flow-bin
+flow # make sure `npm bin -g` is on your path
+```
+
+On Mac OS X, you can install Flow via the [Homebrew](http://brew.sh/) package manager:
 
 ```
 brew update
+brew install flow
 ```
 
-### Using OPAM
-
-You can also build and install flow via the OCaml [OPAM](https://opam.ocaml.org) package manager. Since Flow has some non-ocaml dependencies, you need to use the [`depext`](https://opam.ocaml.org/doc/FAQ.html#Somepackagefailduringcompilationcomplainingaboutmissingdependenciesquotm4quotquotlibgtkquotetc) package like so:
+You can also build and install Flow via the OCaml [OPAM](https://opam.ocaml.org) package manager. Since Flow has some non-OCaml dependencies, you need to use the [`depext`](https://opam.ocaml.org/doc/FAQ.html#Somepackagefailduringcompilationcomplainingaboutmissingdependenciesquotm4quotquotlibgtkquotetc) package like so:
 
 ```
 opam install depext
@@ -43,11 +60,12 @@ opam depext --install flowtype
 If you don't have a new enough version of OCaml to compile Flow, you can also use OPAM to bootstrap a modern version.  Install OPAM via the [binary packages](http://opam.ocaml.org/doc/Install.html#InstallOPAMin2minutes) for your operating system and run:
 
 ```
-opam init --comp=4.01.0
+opam init --comp=4.03.0
 opam install flowtype
 eval `opam config env`
 flow --help
 ```
+
 
 ## Getting started
 
@@ -80,7 +98,7 @@ For example, on Ubuntu 14.04 and similar systems:
 sudo apt-get install ocaml libelf-dev
 ```
 
-On OSX, using the [brew package manager](http://brew.sh/):
+On OS X, using the [brew package manager](http://brew.sh/):
 
 ```
 brew install ocaml ocamlbuild libelf opam
@@ -96,6 +114,14 @@ This produces a `bin` folder containing the `flow` binary.
 
 *Note: at this time, the OCaml dependency prevents us from adding Flow to [npm](http://npmjs.org). Try [flow-bin](https://www.npmjs.org/package/flow-bin) if you need a npm binary wrapper.*
 
+Flow can also compile its parser to JavaScript. [Read how here](src/parser/README.md).
+
+## Using Flow's parser from JavaScript
+
+While Flow is written in OCaml, its parser is available as a compiled-to-JavaScript module published to npm, named [flow-parser](https://www.npmjs.com/package/flow-parser). **Most end users of Flow
+will not need to use this parser directly** (and should install [flow-bin](https://www.npmjs.org/package/flow-bin) from npm above), but JavaScript packages which make use of parsing
+Flow-typed JavaScript can use this to generate Flow's syntax tree with annotated types attached.
+
 ## Running the tests
 
 To run the tests, first compile flow using `make`. Then run `bash ./runtests.sh bin/flow`
@@ -110,6 +136,7 @@ For example: `bash runtests.sh bin/flow class | grep -v 'SKIP'`
 * Website: [http://flowtype.org/](http://flowtype.org/)
 * irc: #flowtype on Freenode
 * Twitter: follow [@flowtype](https://twitter.com/flowtype) and [#flowtype](https://twitter.com/hashtag/flowtype) to keep up with the latest Flow news.
+* Stack Overflow: Ask a question with the [flowtype tag](http://stackoverflow.com/questions/tagged/flowtype)
 
 ## License
 Flow is BSD-licensed. We also provide an additional patent grant.

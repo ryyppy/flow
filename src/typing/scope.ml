@@ -9,7 +9,8 @@
  *)
 
 open Utils_js
-open Reason (* mk_id *)
+
+let mk_id = Reason.mk_id
 
 (******************************************************************************)
 (* Scopes                                                                     *)
@@ -51,8 +52,9 @@ module Entry = struct
     | Var
 
   and const_binding_kind =
-    | ConstVarBinding
+    | ConstImportBinding
     | ConstParamBinding
+    | ConstVarBinding
 
   and let_binding_kind =
     | LetVarBinding
@@ -62,8 +64,9 @@ module Entry = struct
     | ParamBinding
 
   let string_of_value_kind = function
-  | Const ConstVarBinding -> "const"
+  | Const ConstImportBinding -> "import"
   | Const ConstParamBinding -> "const param"
+  | Const ConstVarBinding -> "const"
   | Let LetVarBinding -> "let"
   | Let ClassNameBinding -> "class"
   | Let CatchParamBinding -> "catch"
@@ -108,6 +111,9 @@ module Entry = struct
 
   let new_const ~loc ?(state=State.Undeclared) ?(kind=ConstVarBinding) t =
     new_value (Const kind) state t t loc
+
+  let new_import ~loc t =
+    new_value (Const ConstImportBinding) State.Initialized t t loc
 
   let new_let ~loc ?(state=State.Undeclared) ?(kind=LetVarBinding) t =
     new_value (Let kind) state t t loc
@@ -191,6 +197,7 @@ type var_scope_kind =
   | Ordinary        (* function or module *)
   | Async           (* async function *)
   | Generator       (* generator function *)
+  | AsyncGenerator  (* async generator function *)
   | Module          (* module scope *)
   | Global          (* global scope *)
   | Predicate       (* predicate function *)
@@ -199,6 +206,7 @@ let string_of_var_scope_kind = function
 | Ordinary -> "Ordinary"
 | Async -> "Async"
 | Generator -> "Generator"
+| AsyncGenerator -> "AsyncGenerator"
 | Module -> "Module"
 | Global -> "Global"
 | Predicate -> "Predicate"

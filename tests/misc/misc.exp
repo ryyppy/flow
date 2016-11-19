@@ -6,9 +6,7 @@ A.js:13
 
 A.js:14
  14: f(A.x); // A.x is now a string, by def assign
-     ^^^^^^ function call
- 14: f(A.x); // A.x is now a string, by def assign
-       ^^^ string. This type is incompatible with
+       ^^^ string. This type is incompatible with the expected param type of
   9: function f(x:boolean) { }
                   ^^^^^^^ boolean
 
@@ -20,13 +18,11 @@ C.js:9
 
 C.js:10
  10:   f(o.s);
-         ^^^ number. This type is incompatible with
+         ^^^ number. This type is incompatible with the expected param type of
   9: function f(x:boolean) { }
                   ^^^^^^^ boolean. See: A.js:9
 
-D.js:11
- 11: var i = o.fn();
-             ^^^^^^ call of method `fn`
+D.js:6
   6: function g():string { return this.i; }
                                   ^^^^^^ boolean. This type is incompatible with the expected return type of
   6: function g():string { return this.i; }
@@ -34,27 +30,19 @@ D.js:11
 
 D.js:12
  12: f(i);
-     ^^^^ function call
- 12: f(i);
-       ^ string. This type is incompatible with
+       ^ string. This type is incompatible with the expected param type of
   9: function f(x:boolean) { }
                   ^^^^^^^ boolean. See: A.js:9
 
 E.js:8
   8: o.fn(false);
-     ^^^^^^^^^^^ call of method `fn`
-  8: o.fn(false);
-          ^^^^^ boolean. This type is incompatible with
+          ^^^^^ boolean. This type is incompatible with the expected param type of
   4: function h(x:number) { }
                   ^^^^^^ number
 
-F.js:2
-  2: fn2({length: 'hi'});
-     ^^^^^^^^^^^^^^^^^^^ function call
+F.js:1
   1: function fn2(x) { return x.length * 4; }
-                              ^^^^^^^^ string. This type is incompatible with
-  1: function fn2(x) { return x.length * 4; }
-                              ^^^^^^^^^^^^ number
+                              ^^^^^^^^ string. The operand of an arithmetic operation must be a number.
 
 F.js:5
   5:   return x.length;
@@ -79,7 +67,8 @@ G.js:6
      ^^^^^^^^ assignment of property `length`
   6: b.length = "duck";
                 ^^^^^^ string. This type is incompatible with
-number. See lib: core.js:228
+227:     length: number;
+                 ^^^^^^ number. See lib: <BUILTINS>/core.js:227
 
 G.js:7
   7: b.length();

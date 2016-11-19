@@ -22,11 +22,28 @@ let explicit_impl_require_strict cx (cx_from, r, resolved_r, cx_to) =
   let to_t = Flow_js.lookup_module cx_to r in
   Flow_js.flow_t cx (from_t, to_t)
 
+(* Create the export of a resource file on the fly and connect it to its import
+   in cxs_to. This happens in some arbitrary cx, so cx_to should have already
+   been copied to cx. *)
+let explicit_res_require_strict cx (r, f, cx_to) =
+  let loc = SMap.find_unsafe r (Context.require_loc cx_to) in
+  (* Recall that a resource file is not parsed, so its export doesn't depend on
+     its contents, just its extension. So, we create the export of a resource
+     file on the fly by looking at its extension. The general alternative of
+     writing / reading these exports to / from separate contexts that live in a
+     shared heap takes more time / space (linear in the number of resource
+     files), so we avoid it. This optimization is analogous to what we do for
+     unchecked files: we create the export (`any`) on the fly instead of writing
+     / reading it to / from the context of each unchecked file. *)
+  let from_t = Import_export.mk_resource_module_t cx loc f in
+  let to_t = Flow_js.lookup_module cx_to r in
+  Flow_js.flow_t cx (from_t, to_t)
+
 (* Connect a export of a declared module to its import in cxs_to. This happens
    in some arbitrary cx, so cx_to should have already been copied to cx. *)
 let explicit_decl_require_strict cx (m, resolved_m, cx_to) =
   let loc = SMap.find_unsafe m (Context.require_loc cx_to) in
-  let reason = Reason.mk_reason m loc in
+  let reason = Reason.(mk_reason (RCustom m) loc) in
 
   (* lookup module declaration from builtin context *)
   (* TODO: cache in modulemap *)
@@ -37,7 +54,8 @@ let explicit_decl_require_strict cx (m, resolved_m, cx_to) =
     |> Reason.internal_module_name
   in
   let from_t = Flow_js.mk_tvar cx reason in
-  Flow_js.lookup_builtin cx m_name reason None from_t;
+  Flow_js.lookup_builtin cx m_name reason
+    (Type.NonstrictReturning (Some (Type.AnyT reason, from_t))) from_t;
 
   (* flow the declared module type to importing context *)
   let to_t = Flow_js.lookup_module cx_to m in
@@ -58,8 +76,9 @@ let explicit_decl_require_strict cx (m, resolved_m, cx_to) =
    the component. Let master_cx be the (optimized) context of libraries.
 
    Let implementations contain the dependency edges between contexts in
-   component_cxs and dep_cxs, and declarations contain the dependency edges from
-   component_cxs to master_cx.
+   component_cxs and dep_cxs, resources contain the dependency edges between
+   contexts in component_cxs and resource files, and declarations contain the
+   dependency edges from component_cxs to master_cx.
 
    We assume that the first context in component_cxs is that of the leader (cx):
    this serves as the "host" for the merging. Let the remaining contexts in
@@ -69,12 +88,14 @@ let explicit_decl_require_strict cx (m, resolved_m, cx_to) =
 
    2. Link the edges in implementations.
 
-   3. Link the edges in declarations.
+   3. Link the edges in resources.
 
-   4. Link the local references to libraries in master_cx and component_cxs.
+   4. Link the edges in declarations.
+
+   5. Link the local references to libraries in master_cx and component_cxs.
 *)
 let merge_component_strict component_cxs dep_cxs
-    implementations declarations master_cx =
+    implementations resources declarations master_cx =
   let cx, other_cxs = List.hd component_cxs, List.tl component_cxs in
   Flow_js.Cache.clear();
 
@@ -83,6 +104,8 @@ let merge_component_strict component_cxs dep_cxs
   Context.merge_into cx master_cx;
 
   implementations |> List.iter (explicit_impl_require_strict cx);
+
+  resources |> List.iter (explicit_res_require_strict cx);
 
   declarations |> List.iter (explicit_decl_require_strict cx);
 
@@ -161,13 +184,15 @@ module ContextOptimizer = struct
 
   type quotient = {
     reduced_graph : node IMap.t;
-    reduced_property_maps : Type.t SMap.t IMap.t;
+    reduced_property_maps : Properties.map;
+    reduced_export_maps : Exports.map;
     reduced_envs : Context.env IMap.t
   }
 
   let empty = {
     reduced_graph = IMap.empty;
-    reduced_property_maps = IMap.empty;
+    reduced_property_maps = Properties.Map.empty;
+    reduced_export_maps = Exports.Map.empty;
     reduced_envs = IMap.empty;
   }
 
@@ -182,7 +207,7 @@ module ContextOptimizer = struct
         let t = match types with
           | [] -> AnyT.t
           | [t] -> t
-          | _ -> UnionT (r, UnionRep.make types)
+          | t0::t1::ts -> UnionT (r, UnionRep.make t0 t1 ts)
         in
         let node = Root { rank = 0; constraints = Resolved t } in
         let reduced_graph = IMap.add id node reduced_graph in
@@ -190,11 +215,21 @@ module ContextOptimizer = struct
 
     method! props cx quotient id =
       let { reduced_property_maps; _ } = quotient in
-      if (IMap.mem id reduced_property_maps) then quotient
+      if (Properties.Map.mem id reduced_property_maps) then quotient
       else
-        let pmap = IMap.find_unsafe id (Context.property_maps cx) in
-        let reduced_property_maps = IMap.add id pmap reduced_property_maps in
+        let pmap = Context.find_props cx id in
+        let reduced_property_maps =
+          Properties.Map.add id pmap reduced_property_maps in
         super#props cx { quotient with reduced_property_maps } id
+
+    method! exports cx quotient id =
+      let { reduced_export_maps; _ } = quotient in
+      if (Exports.Map.mem id reduced_export_maps) then quotient
+      else
+        let pmap = Context.find_exports cx id in
+        let reduced_export_maps =
+          Exports.Map.add id pmap reduced_export_maps in
+        super#exports cx { quotient with reduced_export_maps } id
 
     method! fun_type cx quotient funtype =
       let id = funtype.closure_t in
@@ -227,6 +262,7 @@ module ContextOptimizer = struct
     let quotient = reduce_context cx exports in
     Context.set_graph cx quotient.reduced_graph;
     Context.set_property_maps cx quotient.reduced_property_maps;
+    Context.set_export_maps cx quotient.reduced_export_maps;
     Context.set_envs cx quotient.reduced_envs;
     Context.set_type_graph cx (
       Graph_explorer.new_graph

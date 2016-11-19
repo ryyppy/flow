@@ -36,6 +36,8 @@ type handle = private {
 exception Out_of_shared_memory
 exception Hash_table_full
 exception Dep_table_full
+exception Heap_full
+exception C_assertion_failure of string
 
 (*****************************************************************************)
 (* Initializes the shared memory. Must be called before forking! *)
@@ -48,13 +50,6 @@ val init: config -> handle
 (*****************************************************************************)
 
 val connect: handle -> is_master:bool -> unit
-
-(*****************************************************************************)
-(* Resets the initialized and used memory to the state right after
- * initialization.
- *)
-(*****************************************************************************)
-val reset: unit -> unit
 
 (*****************************************************************************)
 (* The shared memory garbage collector. It must be called every time we
@@ -75,12 +70,14 @@ val init_done: unit -> unit
 (*****************************************************************************)
 (* Serializes the dependency table and writes it to a file *)
 (*****************************************************************************)
-val save_dep_table: string -> unit
+val save_dep_table: string -> int
+val save_dep_table_sqlite: string -> int
 
 (*****************************************************************************)
 (* Loads the dependency table by reading from a file *)
 (*****************************************************************************)
-val load_dep_table: string -> unit
+val load_dep_table: string -> int
+val load_dep_table_sqlite: string -> int
 
 (*****************************************************************************)
 (* The size of the dynamically allocated shared memory section *)
@@ -92,6 +89,7 @@ val heap_size : unit -> int
 (*****************************************************************************)
 
 type table_stats = {
+  nonempty_slots : int;
   used_slots : int;
   slots : int;
 }
@@ -156,6 +154,27 @@ module type NoCache = sig
   val oldify_batch: KeySet.t -> unit
   (* Reverse operation of oldify *)
   val revive_batch: KeySet.t -> unit
+
+  (**
+   * When a new local change set is pushed, changes will not be reflected in
+   * the shared memory until the local changes are popped off.
+   **)
+  module LocalChanges : sig
+    (** Push a new local change environment **)
+    val push_stack : unit -> unit
+    (** Pop off the last local change environment **)
+    val pop_stack : unit -> unit
+    (** Reverts any changes associated with the set of keys **)
+    val revert_batch : KeySet.t -> unit
+    (**
+     * Applies the current changes associated with the set of keys to the
+     * previous environment. If there are no other active local changes
+     * this will perform the actions on shared memory.
+     **)
+    val commit_batch : KeySet.t -> unit
+    val revert_all : unit -> unit
+    val commit_all : unit -> unit
+  end
 end
 
 module type WithCache = sig

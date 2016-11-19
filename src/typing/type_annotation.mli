@@ -14,7 +14,6 @@
 
 val convert: Context.t ->
   Type.t SMap.t ->
-  ?variables_in_scope:string list ->
   Spider_monkey_ast.Type.t ->
   Type.t
 
@@ -49,3 +48,5 @@ val mk_type_param_declarations: Context.t ->
 val extract_type_param_instantiations:
   Spider_monkey_ast.Type.ParameterInstantiation.t option ->
   Spider_monkey_ast.Type.t list option
+
+val polarity: Spider_monkey_ast.Variance.t option -> Type.polarity

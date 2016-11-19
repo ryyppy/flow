@@ -25,12 +25,16 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
     ignore (Init_js.get_master_cx options)
 
   let init genv =
+    (* Encapsulate merge_strict_context for dumper *)
+    let merge_component options cx =
+      let cache = new Context_cache.context_cache in
+      Merge_service.merge_strict_context ~options cache [cx] in
     (* write binary path and version to server log *)
     Flow_logger.log "executable=%s" (Sys_utils.executable_path ());
     Flow_logger.log "version=%s" FlowConfig.version;
-    (* start the server *)
+    (* start the server and pipe its result into the dumper *)
     Types_js.server_init genv
-    |> Dumper.init genv
+    |> Dumper.init merge_component genv
 
   let run_once_and_exit env =
     match env.ServerEnv.errorl with
@@ -104,13 +108,13 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
     let results =
       try
         let path = Loc.SourceFile path in
-        let timing, cx, parse_result =
+        let profiling, cx, parse_result =
           match Types_js.typecheck_contents ~options content path with
-          | timing, Some cx, _, parse_result -> timing, cx, parse_result
+          | profiling, Some cx, _, parse_result -> profiling, cx, parse_result
           | _  -> failwith "Couldn't parse file"
         in
         AutocompleteService_js.autocomplete_get_results
-          timing
+          profiling
           command_context
           cx
           state
@@ -123,13 +127,13 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
     Marshal.to_channel oc (results : ServerProt.autocomplete_response) [];
     flush oc
 
-  let check_file ~options file_input verbose respect_pragma oc =
+  let check_file ~options ~force ~verbose file_input oc =
     let file = ServerProt.file_input_get_filename file_input in
-    let errors = match file_input with
+    match file_input with
     | ServerProt.FileName _ -> failwith "Not implemented"
     | ServerProt.FileContent (_, content) ->
         let should_check =
-          if not respect_pragma then
+          if force then
             true
           else
             let (_, docblock) =
@@ -140,15 +144,16 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
             in
             Docblock.is_flow docblock
         in
-        begin if should_check then
+        if should_check then
           let file = Loc.SourceFile file in
-          (match Types_js.typecheck_contents ~options ?verbose ~check_syntax:true content file with
-          | _, _, errors, _ -> errors)
+          let checked = Types_js.typecheck_contents
+            ~options ?verbose ~check_syntax:true content file in
+          let errors = match checked with
+          | _, _, errors, _ -> errors
+          in
+          send_errorl (Errors.to_list errors) oc
         else
-          Errors.ErrorSet.empty
-        end
-    in
-    send_errorl (Errors.to_list errors) oc
+          ServerProt.response_to_channel oc ServerProt.NOT_COVERED
 
   let mk_loc file line col =
     {
@@ -174,7 +179,7 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
             let ty = Some (Type_printer.string_of_t cx t) in
             let raw_type =
               if include_raw then
-                Some (Debug_js.jstr_of_t ~depth:10 cx t)
+                Some (Debug_js.jstr_of_t ~size:50 ~depth:10 cx t)
               else
                 None
             in
@@ -223,16 +228,28 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
     Marshal.to_channel oc (resp : ServerProt.dump_types_response) [];
     flush oc
 
-  let coverage ~options file_input oc =
+  let coverage ~options ~force file_input oc =
     let file = ServerProt.file_input_get_filename file_input in
     let file = Loc.SourceFile file in
     let resp =
     (try
-       let content = ServerProt.file_input_get_content file_input in
-       let cx = match Types_js.typecheck_contents ~options content file with
-       | _, Some cx, _, _ -> cx
-       | _  -> failwith "Couldn't parse file" in
-      OK (Query_types.covered_types cx)
+      let content = ServerProt.file_input_get_content file_input in
+      let should_check =
+        if force then
+          true
+        else
+          let (_, docblock) =
+            Parsing_service_js.get_docblock Docblock.max_tokens file content in
+          Docblock.is_flow docblock
+      in
+      let cx = match Types_js.typecheck_contents ~options content file with
+      | _, Some cx, _, _ -> cx
+      | _  -> failwith "Couldn't parse file" in
+      let types = Query_types.covered_types cx in
+      if should_check then
+        OK types
+      else
+        OK (types |> List.map (fun (loc, _) -> (loc, false)))
     with exn ->
       let loc = mk_loc file 0 0 in
       let err = (loc, Printexc.to_string exn) in
@@ -314,8 +331,77 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
     let cx = Context.make metadata file (Modulename.Filename file) in
     let loc = {Loc.none with Loc.source = Some file;} in
     let module_name = Module_js.imported_module ~options cx loc moduleref in
-    let response: filename option = Module_js.get_module_file module_name in
+    let response: filename option =
+      Module_js.get_module_file ~audit:Expensive.warn module_name in
     Marshal.to_channel oc response [];
+    flush oc
+
+  let gen_flow_files ~options env files oc =
+    let errors = env.ServerEnv.errorl in
+    let result =
+      if List.length errors > 0 then Utils_js.Err (
+        let error_set = List.fold_left (fun set err ->
+          Errors.ErrorSet.add err set
+        ) Errors.ErrorSet.empty errors in
+        ServerProt.GenFlowFile_TypecheckError error_set
+      ) else (
+        let cache = new Context_cache.context_cache in
+        let (flow_files, flow_file_cxs, non_flow_files, error) =
+          List.fold_left (fun (flow_files, cxs, non_flow_files, error) file ->
+            if error <> None then (flow_files, cxs, non_flow_files, error) else
+            match file with
+            | ServerProt.FileContent _ ->
+              let error_msg = "This command only works with file paths." in
+              let error =
+                Some (ServerProt.GenFlowFile_UnexpectedError error_msg)
+              in
+              (flow_files, cxs, non_flow_files, error)
+            | ServerProt.FileName file_path ->
+              let src_file = Loc.SourceFile file_path in
+              (* TODO: Use InfoHeap as the definitive way to detect @flow vs
+               * non-@flow
+               *)
+              match cache#read_safe ~audit:Expensive.warn src_file with
+              | None ->
+                (flow_files, cxs, src_file::non_flow_files, error)
+              | Some cx ->
+                (src_file::flow_files, cx::cxs, non_flow_files, error)
+          ) ([], [], [], None) files
+        in
+        match error with
+        | Some e -> Utils_js.Err e
+        | None -> (
+          try
+            (if List.length flow_file_cxs > 0 then
+              try Merge_service.merge_strict_context ~options cache flow_file_cxs
+              with exn -> failwith (
+                spf "Error merging contexts: %s" (Printexc.to_string exn)
+              )
+            );
+
+            (* Non-@flow files *)
+            let result_contents = non_flow_files |> List.map (fun file ->
+              (Loc.string_of_filename file, ServerProt.GenFlowFile_NonFlowFile)
+            ) in
+
+            (* Codegen @flow files *)
+            let result_contents = List.fold_left2 (fun results file cx ->
+              let file_path = Loc.string_of_filename file in
+              try
+                let code = FlowFileGen.flow_file cx in
+                (file_path, ServerProt.GenFlowFile_FlowFile code)::results
+              with exn ->
+                failwith (spf "%s: %s" file_path (Printexc.to_string exn))
+            ) result_contents flow_files flow_file_cxs in
+
+            Utils_js.OK result_contents
+          with exn -> Utils_js.Err (
+            ServerProt.GenFlowFile_UnexpectedError (Printexc.to_string exn)
+          )
+        )
+      )
+    in
+    Marshal.to_channel oc result [];
     flush oc
 
   let get_def ~options (file_input, line, col) oc =
@@ -349,7 +435,8 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
   let get_importers ~options module_names oc =
     let add_to_results map module_name_str =
       let module_name = module_name_of_string ~options module_name_str in
-      match Module_js.get_reverse_imports module_name with
+      match Module_js.get_reverse_imports ~audit:Expensive.warn
+        module_name with
       | Some references ->
           SMap.add module_name_str references map
       | None -> map
@@ -362,15 +449,18 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
   let get_imports ~options module_names oc =
     let add_to_results (map, non_flow) module_name_str =
       let module_name = module_name_of_string ~options module_name_str in
-      match Module_js.get_module_file module_name with
+      match Module_js.get_module_file ~audit:Expensive.warn module_name with
       | Some file ->
         (* We do not process all modules which are stored in our module
          * database. In case we do not process a module its requirements
          * are not kept track of. To avoid confusing results we notify the
          * client that these modules have not been processed.
          *)
-        let { Module_js.required = requirements; require_loc = req_locs;
-              checked; _ } = Module_js.get_module_info file in
+        let { Module_js.
+              required = requirements;
+              require_loc = req_locs;
+              checked; _ } =
+          Module_js.get_module_info ~audit:Expensive.warn file in
         if checked
         then
           (SMap.add module_name_str (requirements, req_locs) map, non_flow)
@@ -410,26 +500,71 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
       FlowExitStatus.(exit Server_out_of_date)
     end;
 
-    (* Die if a package.json changed *)
-    let modified_packages = SSet.filter (fun f ->
+    let is_incompatible filename_str =
+      let filename = Loc.JsonFile filename_str in
+      let filename_set = FilenameSet.singleton filename in
+      let ast_opt =
+        (*
+         * If the file no longer exists, this will log a harmless error to
+         * stderr and the get_ast call below will return None, which will
+         * cause the server to exit.
+         *
+         * If the file has come into existence, reparse (true to its name)
+         * will not actually parse the file. Again, this will cause get_ast
+         * to return None and the server to exit.
+         *
+         * In both cases, this is desired behavior since a package.json file
+         * has changed considerably.
+         *)
+        let _ = Parsing_service_js.reparse_with_defaults
+          options
+          (* workers *) None
+          filename_set
+        in
+        Parsing_service_js.get_ast filename
+      in
+      match ast_opt with
+        | None -> true
+        | Some ast -> Module_js.package_incompatible filename_str ast
+    in
+
+    (* Die if a package.json changed in an incompatible way *)
+    let incompatible_packages = SSet.filter (fun f ->
       (String_utils.string_starts_with f sroot ||
         Files.is_included options f)
-      && (Filename.basename f) = "package.json" && want f
+      && (Filename.basename f) = "package.json"
+      && want f
+      && is_incompatible f
     ) updates in
-    if not (SSet.is_empty modified_packages)
+    if not (SSet.is_empty incompatible_packages)
     then begin
       Flow_logger.log "Status: Error";
-      SSet.iter (Flow_logger.log "Modified package: %s") modified_packages;
+      SSet.iter (Flow_logger.log "Modified package: %s") incompatible_packages;
       Flow_logger.log
         "Packages changed in an incompatible way. Exiting.\n%!";
       FlowExitStatus.(exit Server_out_of_date)
     end;
 
-    (* Die if a lib file changed *)
     let flow_typed_path = Path.to_string (Files.get_flowtyped_path root) in
-    let libs = updates |> SSet.filter (fun x ->
-      SSet.mem x all_libs || x = flow_typed_path
-    ) in
+    let is_changed_lib filename =
+      let is_lib = SSet.mem filename all_libs || filename = flow_typed_path in
+      is_lib &&
+        let file = Loc.LibFile filename in
+        let old_ast = Parsing_service_js.get_ast file in
+        let new_ast =
+          let filename_set = FilenameSet.singleton file in
+          let _ = Parsing_service_js.reparse_with_defaults
+            options
+            (* workers *) None
+            filename_set
+          in
+          Parsing_service_js.get_ast file
+        in
+        old_ast <> new_ast
+    in
+
+    (* Die if a lib file changed *)
+    let libs = updates |> SSet.filter is_changed_lib in
     if not (SSet.is_empty libs)
     then begin
       Flow_logger.log "Status: Error";
@@ -447,7 +582,7 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
         (* removes excluded and lib files. the latter are already filtered *)
         want f
       then
-        let filename = Files.filename_from_string f in
+        let filename = Files.filename_from_string ~options f in
         FilenameSet.add filename acc
       else acc
     ) updates FilenameSet.empty
@@ -473,10 +608,11 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
     begin match command with
     | ServerProt.AUTOCOMPLETE fn ->
         autocomplete ~options client_logging_context fn oc
-    | ServerProt.CHECK_FILE (fn, verbose, respect_pragma) ->
-        check_file ~options fn verbose respect_pragma oc
-    | ServerProt.COVERAGE (fn) ->
-        coverage ~options fn oc
+    | ServerProt.CHECK_FILE (fn, verbose, graphml, force) ->
+        let options = { options with Options.opt_output_graphml = graphml } in
+        check_file ~options ~force ~verbose fn oc
+    | ServerProt.COVERAGE (fn, force) ->
+        coverage ~options ~force fn oc
     | ServerProt.DUMP_TYPES (fn, format, strip_root) ->
         dump_types ~options fn format strip_root oc
     | ServerProt.ERROR_OUT_OF_DATE ->
@@ -488,6 +624,8 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
         flush oc;
         let updates = process_updates genv !env (Utils_js.set_of_list files) in
         env := recheck genv !env updates
+    | ServerProt.GEN_FLOW_FILES files ->
+        gen_flow_files ~options !env files oc
     | ServerProt.GET_DEF (fn, line, char) ->
         get_def ~options (fn, line, char) oc
     | ServerProt.GET_IMPORTERS module_names ->

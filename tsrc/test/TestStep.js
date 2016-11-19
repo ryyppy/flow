@@ -3,16 +3,23 @@
 import searchStackForTestAssertion from './searchStackForTestAssertion';
 import newErrors from './assertions/newErrors';
 import noNewErrors from './assertions/noNewErrors';
+import stderr from './assertions/stderr';
 import stdout from './assertions/stdout';
 import exitCodes from './assertions/exitCodes';
+import serverRunning from './assertions/serverRunning';
 import noop from './assertions/noop';
 
-import type {AssertionLocation, ErrorAssertion, ErrorAssertionResult} from './assertions/assertionTypes';
+import type {
+  AssertionLocation,
+  ErrorAssertion,
+  ErrorAssertionResult,
+} from './assertions/assertionTypes';
 import type {TestBuilder} from './builder';
 import type {FlowResult} from '../flowResult';
-import type {StepEnvReadable, StepEnvWriteable} from './stepEnv'
+import type {StepEnvReadable, StepEnvWriteable} from './stepEnv';
 
-type Action = (builder: TestBuilder, envWrite: StepEnvWriteable) => Promise<void>;
+type Action =
+  (builder: TestBuilder, envWrite: StepEnvWriteable) => Promise<void>;
 
 export type StepResult = {
   passed: boolean,
@@ -59,7 +66,10 @@ export class TestStep {
     this._reason = step == null ? null : step._reason;
   }
 
-  async performActions(builder: TestBuilder, env: StepEnvWriteable): Promise<void> {
+  async performActions(
+    builder: TestBuilder,
+    env: StepEnvWriteable,
+  ): Promise<void> {
     for (const action of this._actions) {
       await action(builder, env);
     }
@@ -99,6 +109,11 @@ class TestStepFirstOrSecondStage extends TestStep {
     return ret;
   }
 
+  stderr(expected: string): TestStepSecondStage {
+    const assertLoc = searchStackForTestAssertion();
+    return this._cloneWithAssertion(stderr(expected, assertLoc));
+  }
+
   stdout(expected: string): TestStepSecondStage {
     const assertLoc = searchStackForTestAssertion();
     return this._cloneWithAssertion(stdout(expected, assertLoc));
@@ -107,6 +122,11 @@ class TestStepFirstOrSecondStage extends TestStep {
   exitCodes(expected: Array<number>): TestStepSecondStage {
     const assertLoc = searchStackForTestAssertion();
     return this._cloneWithAssertion(exitCodes(expected, assertLoc));
+  }
+
+  serverRunning(expected: boolean): TestStepSecondStage {
+    const assertLoc = searchStackForTestAssertion();
+    return this._cloneWithAssertion(serverRunning(expected, assertLoc));
   }
 
   _cloneWithAssertion(assertion: ErrorAssertion) {
@@ -153,6 +173,22 @@ export class TestStepFirstStage extends TestStepFirstOrSecondStage {
       }
     );
 
+  removeFile: (filename: string) => TestStepFirstStage =
+    (filename) => this._cloneWithAction(
+      async (builder, env) => {
+        await builder.removeFile(filename);
+        env.triggerFlowCheck();
+      }
+    );
+
+  removeFiles: (...filenames: Array<string>) => TestStepFirstStage =
+    (...filenames) => this._cloneWithAction(
+      async (builder, env) => {
+        await builder.removeFiles(filenames);
+        env.triggerFlowCheck();
+      }
+    );
+
   flowCmd: (args: Array<string>, stdinFile?: string) => TestStepFirstStage =
     (args, stdinFile) => {
       const ret = this._cloneWithAction(
@@ -162,6 +198,17 @@ export class TestStepFirstStage extends TestStepFirstOrSecondStage {
           env.reportStdout(stdout);
           env.reportStderr(stderr);
           env.triggerFlowCheck();
+        }
+      );
+      ret._needsFlowServer = true;
+      return ret;
+    };
+
+  waitForServerToDie: (timeout: number) => TestStepFirstStage =
+    (timeout) => {
+      const ret = this._cloneWithAction(
+        async (builder, env) => {
+          await builder.waitForServerToDie(timeout);
         }
       );
       ret._needsFlowServer = true;

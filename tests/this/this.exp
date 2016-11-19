@@ -6,8 +6,6 @@ This.js:29
 
 This.js:33
  33: var f1_2 : string = f1.bind({x: 0})();   // error, number -> string
-                         ^^^^^^^^^^^^^^^^^ function call
- 33: var f1_2 : string = f1.bind({x: 0})();   // error, number -> string
                          ^^^^^^^^^^^^^^^^^ number. This type is incompatible with
  33: var f1_2 : string = f1.bind({x: 0})();   // error, number -> string
                 ^^^^^^ string
@@ -17,12 +15,14 @@ This.js:36
                 ^^^^ function call
  29:   return this.x
                    ^ property `x`. Property cannot be accessed on
-global object
+ 29:   return this.x
+              ^^^^ global object
 
 This.js:41
  41:   return this.x
                    ^ property `x`. Property cannot be accessed on
-global object
+ 41:   return this.x
+              ^^^^ global object
 
 This.js:49
  49:     return a2()
@@ -31,8 +31,6 @@ This.js:49
                      ^^^^^^ number
 
 This.js:53
- 53: var f2_2 : string = f2.bind({x: 0})();   // error, number -> string
-                         ^^^^^^^^^^^^^^^^^ function call
  53: var f2_2 : string = f2.bind({x: 0})();   // error, number -> string
                          ^^^^^^^^^^^^^^^^^ number. This type is incompatible with
  53: var f2_2 : string = f2.bind({x: 0})();   // error, number -> string
@@ -43,7 +41,14 @@ This.js:56
                 ^^^^ function call
  48:     var a2 = () => { return this.x };
                                       ^ property `x`. Property cannot be accessed on
-global object
+ 48:     var a2 = () => { return this.x };
+                                 ^^^^ global object
+
+This.js:58
+ 58: (this: void);
+      ^^^^ global object. This type is incompatible with
+ 58: (this: void);
+            ^^^^ undefined
 
 arrows.js:16
  16: (j: D); // error, since return type of bar is C, not the type of `this`
@@ -53,11 +58,9 @@ arrows.js:16
 
 arrows.js:24
  24:       super.foo(""); // find super method, error due to incorrect arg
-           ^^^^^^^^^^^^^ super.foo(...)
- 24:       super.foo(""); // find super method, error due to incorrect arg
-                     ^^ string. This type is incompatible with
+                     ^^ string. This type is incompatible with the expected param type of
  19:   foo(x: number) { }
               ^^^^^^ number
 
 
-Found 9 errors
+Found 10 errors

@@ -26,10 +26,13 @@ let is_prefix prefix =
   in fun path ->
     path = prefix || String_utils.string_starts_with path prefix_with_sep
 
-let is_json_file path = Filename.check_suffix path ".json"
+let is_json_file filename =
+  Utils_js.extension_of_filename filename = Some ".json"
 
 let is_valid_path ~options =
-  let file_exts = Options.module_file_exts options in
+  let file_exts = SSet.union
+    (Options.module_file_exts options)
+    (Options.module_resource_exts options) in
   let is_valid_path_helper path =
     not (is_dot_file path) &&
     (SSet.exists (Filename.check_suffix path) file_exts ||
@@ -56,6 +59,7 @@ let make_path_absolute root path =
 type file_kind =
 | Reg of string
 | Dir of string * bool
+| StatError of string
 | Other
 
 (* Determines whether a path is a regular file, a directory, or something else
@@ -73,17 +77,17 @@ let kind_of_path path = Unix.(
     end with Unix_error (ENOENT, _, _) -> Other)
   | S_DIR -> Dir (path, false)
   | _ -> Other
-  with 
+  with
   | Unix_error (ENOENT, _, _) when Sys.win32 && String.length path >= 248 ->
-    Utils.prerr_endlinef 
-      "On Windows, paths must be less than 248 characters for directories \
-       and 260 characters for files. This path has %d characters. Skipping %s"
-      (String.length path)
-      path;
-    Other
+    StatError (
+      Utils_js.spf
+        "On Windows, paths must be less than 248 characters for directories \
+         and 260 characters for files. This path has %d characters. Skipping %s"
+        (String.length path)
+        path
+    )
   | Unix_error (e, _, _) ->
-    Printf.eprintf "Skipping %s: %s\n%!" path (Unix.error_message e);
-    Other
+    StatError (Utils_js.spf "Skipping %s: %s\n%!" path (Unix.error_message e))
 )
 
 let can_read path =
@@ -108,9 +112,11 @@ let max_files = 1000
    closure will return a List of up to 1000 files whose paths match
    `path_filter`, and if the path is a symlink then whose real path matches
    `realpath_filter`; it also returns an SSet of all of the symlinks that
-    point to _directories_ outside of `paths`. *)
+    point to _directories_ outside of `paths`.
+
+    If kind_of_path fails, then we only emit a warning if error_filter passes *)
 let make_next_files_and_symlinks
-    ~path_filter ~realpath_filter paths =
+    ~path_filter ~realpath_filter ~error_filter paths =
   let prefix_checkers = List.map is_prefix paths in
   let rec process sz (acc, symlinks) files dir stack =
     if sz >= max_files then
@@ -140,7 +146,10 @@ let make_next_files_and_symlinks
             process sz (acc, symlinks) files dir stack
           else
             process sz (acc, symlinks) dirfiles file (S_Dir (files, dir, stack))
-        | _ ->
+        | StatError msg ->
+          if error_filter file then prerr_endline msg;
+          process sz (acc, symlinks) files dir stack
+        | Other ->
           process sz (acc, symlinks) files dir stack
   and process_stack sz accs = function
     | S_Nil -> (accs, S_Nil)
@@ -155,10 +164,14 @@ let make_next_files_and_symlinks
    `realpath_filter` (see `make_next_files_and_symlinks`), starting from `paths`
    and including any directories that are symlinked to even if they are outside
    of `paths`. *)
-let make_next_files_following_symlinks ~path_filter ~realpath_filter paths =
+let make_next_files_following_symlinks
+  ~path_filter
+  ~realpath_filter
+  ~error_filter
+  paths =
   let paths = List.map Path.to_string paths in
   let cb = ref (make_next_files_and_symlinks
-    ~path_filter ~realpath_filter paths
+    ~path_filter ~realpath_filter ~error_filter paths
   ) in
   let symlinks = ref SSet.empty in
   let seen_symlinks = ref SSet.empty in
@@ -177,7 +190,7 @@ let make_next_files_following_symlinks ~path_filter ~realpath_filter paths =
       symlinks := SSet.empty;
       (* since we're following a symlink, use realpath_filter for both *)
       cb := make_next_files_and_symlinks
-        ~path_filter:realpath_filter ~realpath_filter paths;
+        ~path_filter:realpath_filter ~realpath_filter ~error_filter paths;
       rec_cb ()
     end
   in
@@ -207,15 +220,18 @@ let init options =
   let libs = if libs = []
     then []
     else
-      let get_next = make_next_files_following_symlinks
-        ~path_filter:filter
-        ~realpath_filter:filter
+      let get_next lib =
+        let lib_str = Path.to_string lib in
+        let filter' path = path = lib_str || filter path in
+        make_next_files_following_symlinks
+          ~path_filter:filter'
+          ~realpath_filter:filter'
+          ~error_filter:(fun _ -> true)
+          [lib]
       in
-      let exp_list = libs |> List.map (fun lib ->
-        let expanded = SSet.elements (get_all (get_next [lib])) in
-        expanded
-      ) in
-      List.flatten exp_list
+      libs
+      |> List.map (fun lib -> SSet.elements (get_all (get_next lib)))
+      |> List.flatten
   in
   (libs, Utils_js.set_of_list libs)
 
@@ -225,7 +241,7 @@ let lib_module = ""
 let dir_sep = Str.regexp "[/\\\\]"
 let current_dir_name = Str.regexp_string Filename.current_dir_name
 let parent_dir_name = Str.regexp_string Filename.parent_dir_name
-let absolute_path = Str.regexp "^\\(/\\|[A-Za-z]:\\)"
+let absolute_path = Str.regexp "^\\(/\\|[A-Za-z]:[/\\\\]\\)"
 
 (* true if a file path matches an [ignore] entry in config *)
 let is_ignored options =
@@ -243,18 +259,38 @@ let wanted ~options lib_fileset =
   let is_ignored_ = is_ignored options in
   fun path -> not (is_ignored_ path) && not (SSet.mem path lib_fileset)
 
-let make_next_files ~options ~libs =
+(**
+ * Creates a "next" function (see also: `get_all`) for finding the files in a
+ * given FlowConfig root. Also takes an optional `subdir` argument to restrict
+ * the set of files to things that sit under a given sub-directory of root. If
+ * `subdir` is none, all JS files under the root will be returned.
+ *)
+let make_next_files ~subdir ~options ~libs =
   let root = Options.root options in
   let filter = wanted ~options libs in
   let others = Path_matcher.stems (Options.includes options) in
-  let sroot = Path.to_string root in
+  let root_str= Path.to_string root in
   let realpath_filter path = is_valid_path ~options path && filter path in
-  let path_filter path =
-    (String_utils.string_starts_with path sroot || is_included options path)
-    && realpath_filter path
+  let path_filter =
+    (**
+     * This function is very hot on large codebases, so specialize it up front
+     * to minimize work.
+     *)
+    match subdir with
+    | None ->
+      (fun path ->
+        (String_utils.string_starts_with path root_str || is_included options path)
+        && realpath_filter path
+      )
+    | Some subdir ->
+      let subdir_str = Path.to_string subdir in
+      (fun path ->
+        (String_utils.string_starts_with path subdir_str)
+        && realpath_filter path
+      )
   in
   make_next_files_following_symlinks
-    ~path_filter ~realpath_filter (root::others)
+    ~path_filter ~realpath_filter ~error_filter:filter (root::others)
 
 let is_windows_root root =
   Sys.win32 &&
@@ -307,7 +343,33 @@ let get_flowtyped_path root =
   make_path_absolute root "flow-typed"
 
 (* helper: make different kinds of Loc.filename from a path string *)
-let filename_from_string p =
-  if is_json_file p
-  then Loc.JsonFile p
-  else Loc.SourceFile p
+let filename_from_string ~options p =
+  let resource_file_exts = Options.module_resource_exts options in
+  match Utils_js.extension_of_filename p with
+  | Some ".json" -> Loc.JsonFile p
+  | Some ext when SSet.mem ext resource_file_exts -> Loc.ResourceFile p
+  | _ -> Loc.SourceFile p
+
+let mkdirp path_str perm =
+  let parts = Str.split dir_sep path_str in
+  (* If path_str is absolute, then path_prefix will be something like C:\ on
+   * Windows and / on Linux *)
+  let path_prefix =
+    if Str.string_match absolute_path path_str 0
+    then Str.matched_string path_str
+    else "" in
+
+  (* On Windows, the Str.split above will mean the first part of an absolute
+   * path will be something like C:, so let's remove that *)
+  let parts = match parts with
+  | first_part::rest when first_part ^ Filename.dir_sep = path_prefix -> rest
+  | parts -> parts in
+
+  ignore (List.fold_left (fun path_str part ->
+    let new_path_str = Filename.concat path_str part in
+    Unix.(
+      try mkdir new_path_str perm
+      with Unix_error (EEXIST, "mkdir", _) -> ()
+    );
+    new_path_str
+  ) path_prefix parts);

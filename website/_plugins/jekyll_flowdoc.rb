@@ -35,6 +35,18 @@ module Jekyll
 
         true
       end
+
+      tags = site.data['flow_dot_js_versions']
+      site.config['flow'] ||= {}
+      if tags.nil? || tags.empty?
+        version = ENV["TRAVIS_TAG"] || "master"
+        site.config['flow']['version'] = version
+        site.config['flow']['versions'] = [version]
+      else
+        versions = tags.map {|v| v['version'] }
+        site.config['flow']['version'] = versions.first
+        site.config['flow']['versions'] = ["master"] + versions
+      end
     end
   end
 

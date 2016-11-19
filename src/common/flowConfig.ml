@@ -10,7 +10,7 @@
 
 open Utils_js
 
-let version = "0.30.0"
+let version = "0.35.0"
 
 let default_temp_dir = Filename.concat Sys_utils.temp_dir_name "flow"
 let default_shm_dirs =
@@ -49,13 +49,14 @@ module Opts = struct
     esproposal_class_static_fields: Options.esproposal_feature_mode;
     esproposal_decorators: Options.esproposal_feature_mode;
     esproposal_export_star_as: Options.esproposal_feature_mode;
-    facebook_ignore_fbt: bool;
+    facebook_fbt: string option;
     ignore_non_literal_requires: bool;
     moduleSystem: moduleSystem;
     module_name_mappers: (Str.regexp * string) list;
     node_resolver_dirnames: string list;
     munge_underscores: bool;
     module_file_exts: SSet.t;
+    module_resource_exts: SSet.t;
     modules_are_use_strict: bool;
     suppress_comments: Str.regexp list;
     suppress_types: SSet.t;
@@ -118,28 +119,42 @@ module Opts = struct
     config
 
   let module_file_exts = SSet.empty
-        |> SSet.add ".js"
-        |> SSet.add ".jsx"
-        |> SSet.add ".json"
+    |> SSet.add ".js"
+    |> SSet.add ".jsx"
+    |> SSet.add ".json"
+
+  let module_resource_exts = SSet.empty
+    |> SSet.add ".css"
+    |> SSet.add ".jpg"
+    |> SSet.add ".png"
+    |> SSet.add ".gif"
+    |> SSet.add ".eot"
+    |> SSet.add ".svg"
+    |> SSet.add ".ttf"
+    |> SSet.add ".woff"
+    |> SSet.add ".woff2"
+    |> SSet.add ".mp4"
+    |> SSet.add ".webm"
 
   let default_options = {
     enable_const_params = false;
     enable_unsafe_getters_and_setters = false;
     enforce_strict_type_args = true;
-    esproposal_class_instance_fields = Options.ESPROPOSAL_WARN;
-    esproposal_class_static_fields = Options.ESPROPOSAL_WARN;
+    esproposal_class_instance_fields = Options.ESPROPOSAL_ENABLE;
+    esproposal_class_static_fields = Options.ESPROPOSAL_ENABLE;
     esproposal_decorators = Options.ESPROPOSAL_WARN;
     esproposal_export_star_as = Options.ESPROPOSAL_WARN;
-    facebook_ignore_fbt = false;
+    facebook_fbt = None;
     ignore_non_literal_requires = false;
     moduleSystem = Node;
     module_name_mappers = [];
     node_resolver_dirnames = ["node_modules"];
     munge_underscores = false;
     module_file_exts;
+    module_resource_exts;
     modules_are_use_strict = false;
-    suppress_comments = [];
-    suppress_types = SSet.empty;
+    suppress_comments = [Str.regexp "\\(.\\|\n\\)*\\$FlowFixMe"];
+    suppress_types = SSet.empty |> SSet.add "$FlowFixMe";
     traces = 0;
     strip_root = false;
     all = false;
@@ -148,7 +163,7 @@ module Opts = struct
     max_workers = Sys_utils.nbr_procs;
     temp_dir = default_temp_dir;
     shm_global_size = 1024 * 1024 * 1024; (* 1 gig *)
-    shm_heap_size = 1024 * 1024 * 1024 * 20; (* 20 gigs *)
+    shm_heap_size = 1024 * 1024 * 1024 * 25; (* 25 gigs *)
     shm_dirs = default_shm_dirs;
     shm_min_avail = default_shm_min_avail;
     shm_dep_table_pow = 17;
@@ -407,12 +422,12 @@ let parse_options config lines =
       });
     }
 
-    |> define_opt "facebook.ignore_fbt" {
+    |> define_opt "facebook.fbt" {
       _initializer = USE_DEFAULT;
       flags = [];
-      optparser = optparse_boolean;
+      optparser = optparse_string;
       setter = (fun opts v -> {
-        opts with facebook_ignore_fbt = v;
+        opts with facebook_fbt = Some v;
       });
     }
 
@@ -581,7 +596,9 @@ let parse_options config lines =
     }
 
     |> define_opt "suppress_comment" {
-      _initializer = USE_DEFAULT;
+      _initializer = INIT_FN (fun opts ->
+        {opts with suppress_comments = [];}
+      );
       flags = [ALLOW_DUPLICATE];
       optparser = optparse_regexp;
       setter = (fun opts v -> {
@@ -590,7 +607,9 @@ let parse_options config lines =
     }
 
     |> define_opt "suppress_type" {
-      _initializer = USE_DEFAULT;
+      _initializer = INIT_FN (fun opts ->
+        {opts with suppress_types = SSet.empty;}
+      );
       flags = [ALLOW_DUPLICATE];
       optparser = optparse_string;
       setter = (fun opts v -> {

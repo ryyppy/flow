@@ -35,13 +35,16 @@ let spec = {
     |> strip_root_flag
     |> json_flags
     |> verbose_flags
-    |> flag "--respect-pragma" no_arg
-        ~doc:"Respect the presence or absence of an @flow pragma"
+    |> flag "--graphml" no_arg
+        ~doc:"Output GraphML for checked content (<FILE>.graphml or contents.graphml)"
+    |> flag "--respect-pragma" no_arg ~doc:"" (* deprecated *)
+    |> flag "--all" no_arg ~doc:"Ignore absence of an @flow pragma"
     |> anon "filename" (optional string) ~doc:"Filename"
   )
 }
 
-let main option_values root error_flags strip_root use_json verbose respect_pragma file () =
+let main option_values root error_flags strip_root json pretty verbose
+  graphml respect_pragma all file () =
   let file = get_file_from_filename_or_stdin file None in
   let root = guess_root (
     match root with
@@ -53,10 +56,24 @@ let main option_values root error_flags strip_root use_json verbose respect_prag
   let strip_root = strip_root || FlowConfig.(flowconfig.options.Opts.strip_root) in
   let ic, oc = connect option_values root in
 
-  if not use_json && (verbose <> None)
+  (* pretty implies json *)
+  let json = json || pretty in
+
+  if not json && (verbose <> None)
   then prerr_endline "NOTE: --verbose writes to the server log file";
 
-  ServerProt.cmd_to_channel oc (ServerProt.CHECK_FILE (file, verbose, respect_pragma));
+  if not json && all && respect_pragma then prerr_endline
+    "Warning: --all and --respect-pragma cannot be used together. --all wins.";
+
+  (* TODO: --respect-pragma is deprecated. We will soon flip the default. As a
+     transition, --all defaults to enabled. To maintain the current behavior
+     going forward, callers should add --all, which currently is a no-op.
+     Once we flip the default, --respect-pragma will have no effect and will
+     be removed. *)
+  let all = all || not respect_pragma in
+
+  ServerProt.cmd_to_channel oc
+    (ServerProt.CHECK_FILE (file, verbose, graphml, all));
   let response = ServerProt.response_from_channel ic in
   let stdin_file = match file with
     | ServerProt.FileContent (None, contents) ->
@@ -65,11 +82,13 @@ let main option_values root error_flags strip_root use_json verbose respect_prag
         Some (Path.make path, contents)
     | _ -> None
   in
+  let print_json =
+    Errors.print_error_json ~strip_root ~root ~pretty ~stdin_file in
   match response with
   | ServerProt.ERRORS e ->
-      if use_json
+      if json
       then
-        Errors.print_error_json ~root ~stdin_file stdout e
+        print_json stdout e
       else (
         Errors.print_error_summary
           ~flags:error_flags
@@ -80,9 +99,14 @@ let main option_values root error_flags strip_root use_json verbose respect_prag
         FlowExitStatus.(exit Type_error)
       )
   | ServerProt.NO_ERRORS ->
-      if use_json
-      then Errors.print_error_json ~root ~stdin_file stdout []
+      if json
+      then print_json stdout []
       else Printf.printf "No errors!\n%!";
+      FlowExitStatus.(exit No_error)
+  | ServerProt.NOT_COVERED ->
+      if json
+      then print_json stdout []
+      else Printf.printf "File is not @flow!\n%!";
       FlowExitStatus.(exit No_error)
   | _ ->
       let msg = "Unexpected server response!" in

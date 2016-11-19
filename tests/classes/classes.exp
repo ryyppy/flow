@@ -1,18 +1,18 @@
 A.js:2
   2:   foo(x:number):void { }
-             ^^^^^^ number. This type is incompatible with
+             ^^^^^^ number. This type is incompatible with the expected param type of
   4:   foo(x:string):void { }
              ^^^^^^ string. See: C.js:4
 
 B.js:6
   6: (b.foo: number); // error, number !~> function
-      ^^^^^ method `foo`. This type is incompatible with
+      ^^^^^ property `foo`. This type is incompatible with
   6: (b.foo: number); // error, number !~> function
              ^^^^^^ number
 
 C.js:8
   8: (c.foo: number); // error, number !~> function
-      ^^^^^ method `foo`. This type is incompatible with
+      ^^^^^ property `foo`. This type is incompatible with
   8: (c.foo: number); // error, number !~> function
              ^^^^^^ number
 
@@ -20,7 +20,7 @@ D.js:3
   3: new E().x
              ^ property `x`. Property not found in
   3: new E().x
-         ^ E
+     ^^^^^^^ E
 
 class_shapes.js:4
   4:   a: string;    // exists in TestClass

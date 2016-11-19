@@ -38,7 +38,7 @@ let spec = {
   )
 }
 
-let main option_values root json strip_root moduleref filename () =
+let main option_values root json pretty strip_root moduleref filename () =
   let root = guess_root (
     match root with Some root -> Some root | None -> Some filename
   ) in
@@ -50,17 +50,17 @@ let main option_values root json strip_root moduleref filename () =
   let result = match response with
     | Some Loc.LibFile file
     | Some Loc.SourceFile file
-    | Some Loc.JsonFile file ->
+    | Some Loc.JsonFile file
+    | Some Loc.ResourceFile file ->
         if strip_root then Files.relative_path (Path.to_string root) file
         else file
     | Some Loc.Builtins -> "(global)"
     | None -> "(unknown)" in
-  if json
+  if json || pretty
   then (
-    let json = Hh_json.json_to_string (
-      Hh_json.JSON_Object (["file", Hh_json.JSON_String result])
-    ) in
-    output_string stdout (json^"\n");
+    let open Hh_json in
+    let json = JSON_Object (["file", JSON_String result]) in
+    print_endline (json_to_string ~pretty json)
   ) else
     Printf.printf "%s\n%!" result
 

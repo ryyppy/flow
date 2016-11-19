@@ -65,6 +65,8 @@ val allow_await: env -> bool
 val no_in : env -> bool
 val no_call : env -> bool
 val no_let : env -> bool
+val no_anon_function_type : env -> bool
+val no_new : env -> bool
 val errors : env -> (Loc.t * Parse_error.t) list
 val parse_options : env -> parse_options
 val source : env -> Loc.filename option
@@ -91,6 +93,8 @@ val with_allow_await : bool -> env -> env
 val with_no_let : bool -> env -> env
 val with_in_loop : bool -> env -> env
 val with_no_in : bool -> env -> env
+val with_no_anon_function_type : bool -> env -> env
+val with_no_new : bool -> env -> env
 val with_in_switch : bool -> env -> env
 val with_in_export : bool -> env -> env
 val with_no_call : bool -> env -> env
@@ -115,6 +119,7 @@ module Peek : sig
   val is_implicit_semicolon : env -> bool
   val semicolon_loc : ?i:int -> env -> Loc.t option
   val is_identifier : ?i:int -> env -> bool
+  val is_literal_property_name : ?i:int -> env -> bool
   val is_function : ?i:int -> env -> bool
   val is_class : ?i:int -> env -> bool
 end

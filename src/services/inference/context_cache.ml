@@ -19,25 +19,31 @@ open Utils_js
    must be copied, otherwise bad things will happen. (The cost of copying
    context graphs is presumably a lot less than deserializing contexts, so the
    optimization makes sense. *)
-module ContextHeap = SharedMem.WithCache (Loc.FilenameKey) (struct
+module ContextHeap = SharedMem_js.WithCache (Loc.FilenameKey) (struct
   type t = Context.t
   let prefix = Prefix.make()
   let description = "Context"
 end)
 
-module SigContextHeap = SharedMem.WithCache (Loc.FilenameKey) (struct
+let add_context = Expensive.wrap ContextHeap.add
+let find_unsafe_context = Expensive.wrap ContextHeap.find_unsafe
+
+module SigContextHeap = SharedMem_js.WithCache (Loc.FilenameKey) (struct
   type t = Context.t
   let prefix = Prefix.make()
   let description = "SigContext"
 end)
 
-let add cx =
-  let cx_file = Context.file cx in
-  ContextHeap.add cx_file cx
+let add_sig_context = Expensive.wrap SigContextHeap.add
+let find_unsafe_sig_context = Expensive.wrap SigContextHeap.find_unsafe
 
-let add_sig cx =
+let add ~audit cx =
   let cx_file = Context.file cx in
-  SigContextHeap.add cx_file cx
+  add_context ~audit cx_file cx
+
+let add_sig ~audit cx =
+  let cx_file = Context.file cx in
+  add_sig_context ~audit cx_file cx
 
 let remove_batch cxs =
   ContextHeap.remove_batch cxs
@@ -51,7 +57,7 @@ let remove_sig_batch cxs =
    graphs is not only OK, but we rely on it during merging, so it is both safe
    and necessary to cache the local copies. As a side effect, this probably
    helps performance too by avoiding redundant copying. *)
-class context_cache = object
+class context_cache = object(self)
   val cached_infer_contexts = Hashtbl.create 0
 
   (* find a context in the cache *)
@@ -60,21 +66,25 @@ class context_cache = object
     with _ -> None
 
   (* read a context from shared memory, copy its graph, and cache the context *)
-  method read file =
+  method read ~audit file =
     let orig_cx =
-      try ContextHeap.find_unsafe file
+      try find_unsafe_context ~audit file
       with Not_found ->
         raise (Key_not_found ("ContextHeap", (string_of_filename file)))
     in
     let cx = Context.copy_of_context orig_cx in
     Hashtbl.add cached_infer_contexts file cx;
     cx
+
+  method read_safe ~audit file =
+    try Some (self#read ~audit file)
+    with Key_not_found _ -> None
 end
 
 (* Similar to above, but for "signature contexts." The only differences are that
    the underlying heap is SigContextHeap instead of ContextHeap, and that `read`
    returns both the original and the copied version of a context. *)
-class sig_context_cache = object
+class sig_context_cache = object(self)
   val cached_merge_contexts = Hashtbl.create 0
 
   (* find a context in the cache *)
@@ -83,13 +93,17 @@ class sig_context_cache = object
     with _ -> None
 
   (* read a context from shared memory, copy its graph, and cache the context *)
-  method read file =
+  method read ~audit file =
     let orig_cx =
-      try SigContextHeap.find_unsafe file
+      try find_unsafe_sig_context ~audit file
       with Not_found ->
         raise (Key_not_found ("SigContextHeap", (string_of_filename file)))
     in
     let cx = Context.copy_of_context orig_cx in
     Hashtbl.add cached_merge_contexts file cx;
     orig_cx, cx
+
+  method read_safe ~audit file =
+    try Some (self#read ~audit file)
+    with Key_not_found _ -> None
 end

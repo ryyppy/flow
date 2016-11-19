@@ -17,10 +17,6 @@ module Error = Parse_error
 module SSet = Set.Make(String)
 module SMap = Map.Make(String)
 
-let name_of_id id =
-  let (_, {Identifier.name; _;}) = id in
-  name
-
 (* Sometimes we add the same error for multiple different reasons. This is hard
    to avoid, so instead we just filter the duplicates out. This function takes
    a reversed list of errors and returns the list in forward order with dupes
@@ -60,14 +56,6 @@ let string_starts_with long short =
   with Invalid_argument _ ->
     false
 
-(* NOTE: temporary support for predicated function definitions requires
-   that the name starts with `$pred`. In later iterations we would like to
-   add support for a more compact solutions (e.g. `function?(...)`)
-*)
-let is_predicate = function
-  | Some id -> string_starts_with (name_of_id id) "$pred$"
-  | _ -> false
-
 module rec Parse : sig
   val program : env -> Ast.program
   val statement : env -> Ast.Statement.t
@@ -76,12 +64,14 @@ module rec Parse : sig
   val statement_list_with_directives : term_fn:(Token.t -> bool) -> env -> Ast.Statement.t list * bool
   val module_body : term_fn:(Token.t -> bool) -> env -> Ast.Statement.t list
   val expression : env -> Ast.Expression.t
+  val conditional : env -> Ast.Expression.t
   val assignment : env -> Ast.Expression.t
+  val left_hand_side : env -> Ast.Expression.t
   val object_initializer : env -> Loc.t * Ast.Expression.Object.t
   val array_initializer : env -> Loc.t * Ast.Expression.Array.t
   val identifier : ?restricted_error:Error.t -> env -> Ast.Identifier.t
   val identifier_or_reserved_keyword : env -> (Ast.Identifier.t * (Loc.t * Error.t) option)
-  val identifier_with_type : env -> Error.t -> Ast.Identifier.t
+  val identifier_with_type : env -> ?no_optional:bool -> Error.t -> Loc.t * Ast.Pattern.Identifier.t
   val block_body : env -> Loc.t * Ast.Statement.Block.t
   val function_block_body : env -> Loc.t * Ast.Statement.Block.t * bool
   val jsx_element : env -> Loc.t * Ast.JSX.element
@@ -99,12 +89,14 @@ end = struct
     val type_parameter_instantiation : env -> Ast.Type.ParameterInstantiation.t option
     val generic : env -> Loc.t * Ast.Type.Generic.t
     val _object : ?allow_static:bool -> env -> Loc.t * Type.Object.t
-    val function_param_list : env -> Type.Function.Param.t option * Type.Function.Param.t list
+    val function_param_list : env -> Type.Function.Param.t list * Type.Function.RestParam.t option
     val annotation : env -> Ast.Type.annotation
     val annotation_opt : env -> Ast.Type.annotation option
+    val predicate_opt : env -> Ast.Type.Predicate.t option
+    val annotation_and_predicate_opt : env -> Ast.Type.annotation option * Ast.Type.Predicate.t option
   end = struct
     type param_list_or_type =
-      | ParamList of (Type.Function.Param.t option * Type.Function.Param.t list)
+      | ParamList of (Type.Function.Param.t list * Type.Function.RestParam.t option)
       | Type of Type.t
 
     let rec _type env = union env
@@ -120,6 +112,18 @@ end = struct
       | None -> assert false in
       Loc.btwn start_loc end_loc, typeAnnotation
 
+    and variance env =
+      let loc = Peek.loc env in
+      match Peek.token env with
+       | T_PLUS ->
+           Eat.token env;
+           Some (loc, Variance.Plus)
+       | T_MINUS ->
+           Eat.token env;
+           Some (loc, Variance.Minus)
+       | _ ->
+           None
+
     and rev_nonempty_acc acc =
       let end_loc = match acc with
       | (loc, _)::_ -> loc
@@ -131,6 +135,7 @@ end = struct
       Loc.btwn start_loc end_loc, acc
 
     and union env =
+      let _ = Expect.maybe env T_BIT_OR in
       let left = intersection env in
       union_with env left
 
@@ -142,14 +147,17 @@ end = struct
             unions env (intersection env::acc)
         | _ ->
             let loc, acc = rev_nonempty_acc acc in
-            loc, Type.Union acc
+            match acc with
+            | t0::t1::ts -> loc, Type.Union (t0, t1, ts)
+            | _ -> assert false
       in fun env left ->
         if Peek.token env = T_BIT_OR
         then unions env [left]
         else left
 
     and intersection env =
-      let left = prefix env in
+      let _ = Expect.maybe env T_BIT_AND in
+      let left = anon_function_without_parens env in
       intersection_with env left
 
     and intersection_with =
@@ -157,14 +165,31 @@ end = struct
         match Peek.token env with
         | T_BIT_AND ->
             Expect.token env T_BIT_AND;
-            intersections env (prefix env::acc)
+            intersections env (anon_function_without_parens env::acc)
         | _ ->
             let loc, acc = rev_nonempty_acc acc in
-            loc, Type.Intersection acc
+            match acc with
+            | t0::t1::ts -> loc, Type.Intersection (t0, t1, ts)
+            | _ -> assert false
       in fun env left ->
         if Peek.token env = T_BIT_AND
         then intersections env [left]
         else left
+
+
+    and anon_function_without_parens env =
+      let param = prefix env in
+      anon_function_without_parens_with env param
+
+    and anon_function_without_parens_with env param =
+      match Peek.token env with
+      | T_ARROW when not (no_anon_function_type env)->
+        let start_loc, typeParameters, params =
+          let param = anonymous_function_param env param in
+          fst param, None, ([param], None)
+        in
+        function_with_params env start_loc typeParameters params
+      | _ -> param
 
     and prefix env =
       match Peek.token env with
@@ -198,9 +223,10 @@ end = struct
           loc, Type.Exists
       | T_LESS_THAN -> _function env
       | T_LPAREN -> function_or_group env
-      | T_LCURLY ->
-          let loc, o = _object env in
-          loc, Type.Object o
+      | T_LCURLY
+      | T_LCURLYBAR ->
+        let loc, o = _object env ~allow_exact:true in
+        loc, Type.Object o
       | T_TYPEOF ->
           let start_loc = Peek.loc env in
           Expect.token env T_TYPEOF;
@@ -245,6 +271,8 @@ end = struct
 
     and primitive = function
       | T_ANY_TYPE     -> Some Type.Any
+      | T_MIXED_TYPE   -> Some Type.Mixed
+      | T_EMPTY_TYPE   -> Some Type.Empty
       | T_BOOLEAN_TYPE -> Some Type.Boolean
       | T_NUMBER_TYPE  -> Some Type.Number
       | T_STRING_TYPE  -> Some Type.String
@@ -271,6 +299,14 @@ end = struct
         Expect.token env T_RBRACKET;
         Loc.btwn start_loc end_loc, Type.Tuple tl
 
+    and anonymous_function_param _env typeAnnotation =
+      fst typeAnnotation, Type.Function.Param.({
+        name = None;
+        typeAnnotation;
+        optional = false;
+      })
+
+
     and function_param_with_id env name =
       if not (should_parse_types env)
       then error env Error.UnexpectedTypeAnnotation;
@@ -278,27 +314,39 @@ end = struct
       Expect.token env T_COLON;
       let typeAnnotation = _type env in
       Loc.btwn (fst name) (fst typeAnnotation), Type.Function.Param.({
-        name;
+        name = Some name;
         typeAnnotation;
         optional;
       })
 
     and function_param_list_without_parens =
       let param env =
-        let name, _ = Parse.identifier_or_reserved_keyword env in
-        function_param_with_id env name
+        match Peek.token ~i:1 env with
+        | T_COLON | T_PLING ->
+            let name, _ = Parse.identifier_or_reserved_keyword env in
+            function_param_with_id env name
+        | _ ->
+            let typeAnnotation = _type env in
+            anonymous_function_param env typeAnnotation
 
       in let rec param_list env acc =
         match Peek.token env with
         | T_EOF
         | T_ELLIPSIS
         | T_RPAREN as t ->
-            let rest = if t = T_ELLIPSIS
-            then begin
+          let rest =
+            if t = T_ELLIPSIS then begin
+              let start_loc = Peek.loc env in
               Expect.token env T_ELLIPSIS;
-              Some (param env)
-            end else None in
-            rest, List.rev acc
+              let argument = param env in
+              let loc = Loc.btwn start_loc (fst argument) in
+              Some (loc, Type.Function.RestParam.({
+                argument;
+              }))
+            end else
+              None
+          in
+          List.rev acc, rest
         | _ ->
           let acc = (param env)::acc in
           if Peek.token env <> T_RPAREN
@@ -308,53 +356,62 @@ end = struct
       in fun env -> param_list env
 
     and function_param_list env =
-        Expect.token env T_LPAREN;
-        let ret = function_param_list_without_parens env [] in
-        Expect.token env T_RPAREN;
-        ret
+      Expect.token env T_LPAREN;
+      let ret = function_param_list_without_parens env [] in
+      Expect.token env T_RPAREN;
+      ret
 
     and param_list_or_type env =
       Expect.token env T_LPAREN;
-      let ret = match Peek.token env with
-      | T_EOF
-      | T_ELLIPSIS ->
-          (* (... is definitely the beginning of a param list *)
-          ParamList (function_param_list_without_parens env [])
-      | T_RPAREN ->
-          (* () or is definitely a param list *)
-          ParamList (None, [])
-      | T_IDENTIFIER ->
-          (* This could be a function parameter or a generic type *)
-          function_param_or_generic_type env
-      | token ->
-          (match primitive token with
-          | None ->
-              (* All params start with an identifier or `...` *)
-              Type (_type env)
-          | Some _ ->
-              (* Don't know if this is (number) or (number: number). The first
-               * is a type, the second is a param. *)
-              match Peek.token ~i:1 env with
-              | T_PLING | T_COLON ->
-                (* Ok this is definitely a parameter *)
-                let name, _ = Parse.identifier_or_reserved_keyword env in
-                if not (should_parse_types env)
-                then error env Error.UnexpectedTypeAnnotation;
-                let optional = Expect.maybe env T_PLING in
-                Expect.token env T_COLON;
-                let typeAnnotation = _type env in
-                if Peek.token env <> T_RPAREN
-                then Expect.token env T_COMMA;
-                let param = Loc.btwn (fst name) (fst typeAnnotation), Type.Function.Param.({
-                  name;
-                  typeAnnotation;
-                  optional;
-                }) in
-                ParamList (function_param_list_without_parens env [param])
-              | _ ->
+      let ret =
+        let env = with_no_anon_function_type false env in
+        match Peek.token env with
+        | T_EOF
+        | T_ELLIPSIS ->
+            (* (... is definitely the beginning of a param list *)
+            ParamList (function_param_list_without_parens env [])
+        | T_RPAREN ->
+            (* () or is definitely a param list *)
+            ParamList ([], None)
+        | T_IDENTIFIER ->
+            (* This could be a function parameter or a generic type *)
+            function_param_or_generic_type env
+        | token ->
+            (match primitive token with
+            | None ->
+                (* All params start with an identifier or `...` *)
                 Type (_type env)
-          )
+            | Some _ ->
+                (* Don't know if this is (number) or (number: number). The first
+                 * is a type, the second is a param. *)
+                match Peek.token ~i:1 env with
+                | T_PLING | T_COLON ->
+                  (* Ok this is definitely a parameter *)
+                  ParamList (function_param_list_without_parens env [])
+                | _ ->
+                  Type (_type env)
+            )
       in
+      (* Now that we allow anonymous parameters in function types, we need to
+       * disambiguate a little bit more *)
+      let ret = match ret with
+      | ParamList _ -> ret
+      | Type _ when no_anon_function_type env -> ret
+      | Type t ->
+          (match Peek.token env with
+          | T_RPAREN ->
+              (* Reinterpret `(type) =>` as a ParamList *)
+              if Peek.token ~i:1 env = T_ARROW
+              then
+                let param = anonymous_function_param env t in
+                ParamList (function_param_list_without_parens env [param])
+              else Type t
+          | T_COMMA ->
+              (* Reinterpret `(type,` as a ParamList *)
+              Expect.token env T_COMMA;
+              let param = anonymous_function_param env t in
+              ParamList (function_param_list_without_parens env [param])
+          | _ -> ret) in
       Expect.token env T_RPAREN;
       ret
 
@@ -367,51 +424,46 @@ end = struct
           ignore (Expect.maybe env T_COMMA);
           ParamList (function_param_list_without_parens env [param])
       | _ ->
-          Type (union_with env
-                  (intersection_with env
-                    (postfix_with env (generic_type_with_identifier env id)))
-                )
+          Type (
+            generic_type_with_identifier env id
+            |> postfix_with env
+            |> anon_function_without_parens_with env
+            |> intersection_with env
+            |> union_with env
+          )
 
     and function_or_group env =
       let start_loc = Peek.loc env in
       match param_list_or_type env with
-      | ParamList (rest, params) ->
-        Expect.token env T_ARROW;
-        let returnType = _type env in
-        let end_loc = fst returnType in
-        Loc.btwn start_loc end_loc, Type.(Function Function.({
-          params;
-          returnType;
-          rest;
-          typeParameters = None;
-        }))
+      | ParamList params -> function_with_params env start_loc None params
       | Type _type -> _type
 
     and _function env =
       let start_loc = Peek.loc env in
       let typeParameters = type_parameter_declaration ~allow_default:false env in
-      let rest, params = function_param_list env in
+      let params = function_param_list env in
+      function_with_params env start_loc typeParameters params
+
+    and function_with_params env start_loc typeParameters params =
       Expect.token env T_ARROW;
       let returnType = _type env in
       let end_loc = fst returnType in
       Loc.btwn start_loc end_loc, Type.(Function Function.({
         params;
         returnType;
-        rest;
         typeParameters;
       }))
 
     and _object =
       let methodish env start_loc =
         let typeParameters = type_parameter_declaration ~allow_default:false env in
-        let rest, params = function_param_list env in
+        let params = function_param_list env in
         Expect.token env T_COLON;
         let returnType = _type env in
         let loc = Loc.btwn start_loc (fst returnType) in
         loc, Type.Function.({
           params;
           returnType;
-          rest;
           typeParameters;
         })
 
@@ -424,6 +476,7 @@ end = struct
           optional = false;
           static;
           _method = true;
+          variance = None;
         })
 
       in let call_property env start_loc static =
@@ -433,7 +486,7 @@ end = struct
           static;
         })
 
-      in let property env start_loc static key =
+      in let property env start_loc static variance key =
         if not (should_parse_types env)
         then error env Error.UnexpectedTypeAnnotation;
         let optional = Expect.maybe env T_PLING in
@@ -445,12 +498,18 @@ end = struct
           optional;
           static;
           _method = false;
+          variance;
         })
 
-      in let indexer_property env start_loc static =
+      in let indexer_property env start_loc static variance =
         Expect.token env T_LBRACKET;
-        let id, _ = Parse.identifier_or_reserved_keyword env in
-        Expect.token env T_COLON;
+        let id =
+          if Peek.token ~i:1 env = T_COLON
+          then begin
+            let id, _ = Parse.identifier_or_reserved_keyword env in
+            Expect.token env T_COLON;
+            Some id
+          end else None in
         let key = _type env in
         Expect.token env T_RBRACKET;
         Expect.token env T_COLON;
@@ -460,39 +519,53 @@ end = struct
           key;
           value;
           static;
+          variance;
         })
 
-      in let semicolon env =
+      in let semicolon exact env =
         match Peek.token env with
         | T_COMMA | T_SEMICOLON -> Eat.token env
-        | T_RCURLY -> ()
+        | T_RCURLYBAR when exact -> ()
+        | T_RCURLY when not exact -> ()
         | _ -> error_unexpected env
 
-      in let rec properties ~allow_static env (acc, indexers, callProperties) =
+      in let error_unsupported_variance env = function
+      | Some (loc, _) -> error_at env (loc, Error.UnexpectedVariance)
+      | None -> ()
+
+      in let rec properties ~allow_static ~exact env
+        (acc, indexers, callProperties) =
         let start_loc = Peek.loc env in
         let static = allow_static && Expect.maybe env T_STATIC in
+        let variance = variance env in
         match Peek.token env with
-        | T_EOF
-        | T_RCURLY -> List.rev acc, List.rev indexers, List.rev callProperties
+        | T_EOF ->
+          List.rev acc, List.rev indexers, List.rev callProperties
+        | T_RCURLYBAR when exact ->
+          List.rev acc, List.rev indexers, List.rev callProperties
+        | T_RCURLY when not exact ->
+          List.rev acc, List.rev indexers, List.rev callProperties
         | T_LBRACKET ->
-          let indexer = indexer_property env start_loc static in
-          semicolon env;
-          properties allow_static env (acc, indexer::indexers, callProperties)
+          let indexer = indexer_property env start_loc static variance in
+          semicolon exact env;
+          properties allow_static exact env
+            (acc, indexer::indexers, callProperties)
         | T_LESS_THAN
         | T_LPAREN ->
+          error_unsupported_variance env variance;
           let call_prop = call_property env start_loc static in
-          semicolon env;
-          properties allow_static env (acc, indexers, call_prop::callProperties)
-        | _ ->
-          let static, (_, key) = match static, Peek.token env with
-          | true, T_COLON ->
+          semicolon exact env;
+          properties allow_static exact env
+            (acc, indexers, call_prop::callProperties)
+        | token ->
+          let static, (_, key) = match static, variance, token with
+          | true, None, T_COLON ->
               strict_error_at env (start_loc, Error.StrictReservedWord);
               let static_key =
-                start_loc, Expression.Object.Property.Identifier ( start_loc, {
-                  Identifier.name = "static";
-                  optional = false;
-                  typeAnnotation = None;
-                }) in
+                start_loc, Expression.Object.Property.Identifier (
+                  start_loc,
+                  "static"
+                ) in
               false, static_key
           | _ ->
               Eat.push_lex_mode env Lex_mode.NORMAL;
@@ -502,19 +575,26 @@ end = struct
           in
           let property = match Peek.token env with
           | T_LESS_THAN
-          | T_LPAREN -> method_property env start_loc static key
-          | _ -> property env start_loc static key in
-          semicolon env;
-          properties allow_static env (property::acc, indexers, callProperties)
+          | T_LPAREN ->
+            error_unsupported_variance env variance;
+            method_property env start_loc static key
+          | _ ->
+            property env start_loc static variance key
+          in
+          semicolon exact env;
+          properties allow_static exact env
+            (property::acc, indexers, callProperties)
 
-      in fun ?(allow_static=false) env ->
+      in fun ?(allow_static=false) ?(allow_exact=false) env ->
+        let exact = allow_exact && Peek.token env = T_LCURLYBAR in
         let start_loc = Peek.loc env in
-        Expect.token env T_LCURLY;
+        Expect.token env (if exact then T_LCURLYBAR else T_LCURLY);
         let properties, indexers, callProperties =
-          properties ~allow_static env ([], [], []) in
+          properties ~allow_static ~exact env ([], [], []) in
         let end_loc = Peek.loc env in
-        Expect.token env T_RCURLY;
+        Expect.token env (if exact then T_RCURLYBAR else T_RCURLY);
         Loc.btwn start_loc end_loc, Type.Object.({
+          exact;
           properties;
           indexers;
           callProperties
@@ -522,11 +602,12 @@ end = struct
 
     and type_parameter_declaration =
       let rec params env ~allow_default ~require_default acc = Type.ParameterDeclaration.TypeParam.(
-        let variance = match Peek.token env with
-          | T_PLUS -> Eat.token env; Some Variance.Plus
-          | T_MINUS -> Eat.token env; Some Variance.Minus
-          | _ -> None in
-        let loc, id = Parse.identifier_with_type env Error.StrictParamName in
+        let variance = variance env in
+        let loc, {
+          Pattern.Identifier.name = (_, name);
+          typeAnnotation = bound;
+          _;
+        } = Parse.identifier_with_type env Error.StrictParamName in
         let default, require_default = match allow_default, Peek.token env with
         | false, _ -> None, false
         | true, T_ASSIGN ->
@@ -537,8 +618,8 @@ end = struct
             then error_at env (loc, Error.MissingTypeParamDefault);
             None, require_default in
         let param = loc, {
-          name = id.Identifier.name;
-          bound = id.Identifier.typeAnnotation;
+          name;
+          bound;
           variance;
           default;
         } in
@@ -628,6 +709,38 @@ end = struct
       | T_COLON -> Some (annotation env)
       | _ -> None
 
+    let predicate env =
+      let checks_loc = Peek.loc env in
+      Expect.token env T_CHECKS;
+      if Peek.token env = T_LPAREN then begin
+        Expect.token env T_LPAREN;
+        Eat.push_lex_mode env Lex_mode.NORMAL;
+        let exp = Parse.conditional env in
+        Eat.pop_lex_mode env;
+        let rparen_loc = Peek.loc env in
+        Expect.token env T_RPAREN;
+        let loc = Loc.btwn checks_loc rparen_loc in
+        (loc, Ast.Type.Predicate.Declared exp)
+      end else
+        (checks_loc, Ast.Type.Predicate.Inferred)
+
+    let predicate_opt env =
+      let env = with_no_anon_function_type false env in
+      match Peek.token env with
+      | T_CHECKS -> Some (predicate env)
+      | _ -> None
+
+    let annotation_and_predicate_opt env =
+      match Peek.token env, Peek.token ~i:1 env with
+      | T_COLON, T_CHECKS ->
+        Expect.token env T_COLON;
+        (None, predicate_opt env)
+      | T_COLON, _ ->
+         let annotation = annotation_opt env in
+         let predicate = predicate_opt env in
+         (annotation, predicate)
+      | _ -> None, None
+
     let wrap f env =
       let env = env |> with_strict true in
       Eat.push_lex_mode env Lex_mode.TYPE;
@@ -641,10 +754,13 @@ end = struct
     let type_parameter_declaration =
       wrap (type_parameter_declaration ~allow_default:false)
     let type_parameter_instantiation = wrap type_parameter_instantiation
-    let _object ?(allow_static=false) env = wrap (_object ~allow_static) env
+    let _object ?(allow_static=false) env =
+      wrap (_object ~allow_static ~allow_exact:false) env
     let function_param_list = wrap function_param_list
     let annotation = wrap annotation
     let annotation_opt = wrap annotation_opt
+    let predicate_opt = wrap predicate_opt
+    let annotation_and_predicate_opt = wrap annotation_and_predicate_opt
     let generic = wrap generic
   end
 
@@ -654,7 +770,7 @@ end = struct
         | Object o -> _object check_env o
         | Array arr -> _array check_env arr
         | Assignment { Assignment.left; _ } -> pattern check_env left
-        | Identifier id -> identifier check_env id
+        | Identifier id -> identifier_pattern check_env id
         | Expression _ -> (
             error_at env (loc, Error.ExpectedPatternFoundExpression);
             check_env
@@ -673,7 +789,7 @@ end = struct
             | Identifier id -> identifier_no_dupe_check check_env id
             | _ -> check_env in
             pattern check_env property.pattern)
-        | SpreadProperty (_, { SpreadProperty.argument; }) ->
+        | RestProperty (_, { RestProperty.argument; }) ->
             pattern check_env argument)
 
       and _array check_env arr =
@@ -685,17 +801,20 @@ end = struct
       and array_element check_env = Pattern.Array.(function
         | None -> check_env
         | Some (Element p) -> pattern check_env p
-        | Some (Spread (_, { SpreadElement.argument; })) ->
+        | Some (RestElement (_, { RestElement.argument; })) ->
             pattern check_env argument)
 
-      and identifier (env, param_names) (loc, { Identifier.name; _ } as id) =
+      and identifier_pattern check_env {Pattern.Identifier.name=id; _;} =
+        identifier check_env id
+
+      and identifier (env, param_names) (loc, name as id) =
         if SSet.mem name param_names
         then error_at env (loc, Error.StrictParamDupe);
         let env, param_names =
           identifier_no_dupe_check (env, param_names) id in
         env, SSet.add name param_names
 
-      and identifier_no_dupe_check (env, param_names) (loc, { Identifier.name; _ }) =
+      and identifier_no_dupe_check (env, param_names) (loc, name) =
         if is_restricted name
         then strict_error_at env (loc, Error.StrictParamName);
         if is_future_reserved name || is_strict_reserved name
@@ -707,7 +826,7 @@ end = struct
     (* Strict is true if we were already in strict mode or if we are newly in
      * strict mode due to a directive in the function.
      * Simple is the IsSimpleParameterList thing from the ES6 spec *)
-    let strict_post_check env ~strict ~simple id params =
+    let strict_post_check env ~strict ~simple id (params, rest) =
       if strict || not simple
       then
         (* If we are doing this check due to strict mode than there are two
@@ -721,49 +840,60 @@ end = struct
           then env |> with_strict (not (Parser_env.in_strict_mode env))
           else env in
         (match id with
-        | Some (loc, { Identifier.name; _ }) ->
+        | Some (loc, name) ->
             if is_restricted name
             then strict_error_at env (loc, Error.StrictFunctionName);
             if is_future_reserved name || is_strict_reserved name
             then strict_error_at env (loc, Error.StrictReservedWord)
         | None -> ());
-        ignore (List.fold_left check_param (env, SSet.empty) params)
+        let acc = List.fold_left check_param (env, SSet.empty) params in
+        match rest with
+        | Some (_, { Function.RestElement.argument }) ->
+          ignore (check_param acc argument)
+        | None ->
+          ()
 
     let function_params =
       let rec param env =
-        let id = Parse.pattern env Error.StrictParamName in
+        let left = Parse.pattern env Error.StrictParamName in
+        (* TODO: shouldn't Parse.pattern recognize Assignment patterns? *)
         if Peek.token env = T_ASSIGN
         then begin
           Expect.token env T_ASSIGN;
-          let default = Parse.assignment env in
-          id, Some default
+          let right = Parse.assignment env in
+          let loc = Loc.btwn (fst left) (fst right) in
+          (loc, Pattern.Assignment { Pattern.Assignment.left; right })
         end else
-          id, None
-      and param_list env (params, defaults, has_default) =
+          left
+      and param_list env acc =
         match Peek.token env with
         | T_EOF
         | T_RPAREN
         | T_ELLIPSIS as t ->
-            let rest = if t = T_ELLIPSIS
-            then begin
-              Expect.token env T_ELLIPSIS;
-              Some (Parse.identifier_with_type env Error.StrictParamName)
-            end else None in
+            let rest =
+              if t = T_ELLIPSIS then begin
+                let start_loc = Peek.loc env in
+                Expect.token env T_ELLIPSIS;
+                let id = Parse.pattern env Error.StrictParamName in
+                let loc = Loc.btwn start_loc (fst id) in
+                Some (loc, { Function.RestElement.argument = id; })
+              end else
+                None
+            in
             if Peek.token env <> T_RPAREN
             then error env Error.ParameterAfterRestParameter;
-            List.rev params, (if has_default then List.rev defaults else []), rest
+            List.rev acc, rest
         | _ ->
-            let param, default = param env in
-            let has_default = has_default || default <> None in
+            let the_param = param env in
             if Peek.token env <> T_RPAREN
             then Expect.token env T_COMMA;
-            param_list env (param::params, default::defaults, has_default)
+            param_list env (the_param::acc)
 
       in fun env ->
         Expect.token env T_LPAREN;
-        let params, defaults, rest = param_list env ([], [], false) in
+        let params = param_list env [] in
         Expect.token env T_RPAREN;
-        params, defaults, rest
+        params
 
     let function_body env ~async ~generator =
       let env = enter_function env ~async ~generator in
@@ -781,12 +911,26 @@ end = struct
           let expr = Parse.assignment env in
           Function.BodyExpression expr, in_strict_mode env
 
-    let generator env is_async =
-      match is_async, Expect.maybe env T_MULT with
-      | true, true ->
-          error env Error.AsyncGenerator;
-          true
-      | _, result -> result
+    let variance env is_async is_generator =
+      let loc = Peek.loc env in
+      let variance = match Peek.token env with
+      | T_PLUS ->
+          Eat.token env;
+          Some (loc, Variance.Plus)
+      | T_MINUS ->
+          Eat.token env;
+          Some (loc, Variance.Minus)
+      | _ ->
+          None
+      in
+      match variance with
+      | Some (loc, _) when is_async || is_generator ->
+          error_at env (loc, Error.UnexpectedVariance);
+          None
+      | _ ->
+          variance
+
+    let generator env = Expect.maybe env T_MULT
 
     let async env = Expect.maybe env T_ASYNC
 
@@ -795,14 +939,14 @@ end = struct
       | _, Pattern.Identifier _ ->  true
       | _ -> false
 
-      in fun params defaults rest ->
-        defaults = [] && rest = None && List.for_all is_simple_param params
+      in fun (params, rest) ->
+        rest = None && List.for_all is_simple_param params
 
     let _function env =
       let start_loc = Peek.loc env in
       let async = async env in
       Expect.token env T_FUNCTION;
-      let generator = generator env async in
+      let generator = generator env in
       let (typeParameters, id) = (
         match in_export env, Peek.token env with
         | true, T_LPAREN -> (None, None)
@@ -818,11 +962,10 @@ end = struct
           in
           (Type.type_parameter_declaration env, Some id)
       ) in
-      let predicate = is_predicate id in
-      let params, defaults, rest = function_params env in
-      let returnType = Type.annotation_opt env in
+      let params = function_params env in
+      let (returnType, predicate) = Type.annotation_and_predicate_opt env in
       let _, body, strict = function_body env ~async ~generator in
-      let simple = is_simple_function_params params defaults rest in
+      let simple = is_simple_function_params params in
       strict_post_check env ~strict ~simple id params;
       let end_loc, expression = Ast.Function.(
         match body with
@@ -831,8 +974,6 @@ end = struct
       Loc.btwn start_loc end_loc, Statement.(FunctionDeclaration Function.({
         id;
         params;
-        defaults;
-        rest;
         body;
         generator;
         async;
@@ -950,7 +1091,7 @@ end = struct
           then error_at env (fst expr, Error.InvalidLHSInAssignment);
 
           (match expr with
-          | loc, Expression.Identifier (_, { Identifier.name = name; _ })
+          | loc, Expression.Identifier (_, name)
             when is_restricted name ->
               strict_error_at env (loc, Error.StrictLHSAssignment)
           | _ -> ());
@@ -984,13 +1125,12 @@ end = struct
         (* async x => 123 -- and we've already parsed async as an identifier
          * expression *)
         | _ when Peek.is_identifier env -> begin match snd ret with
-          | Expression.Identifier (_, {Identifier.name = "async"; _ })
+          | Expression.Identifier (_, "async")
               when not (Peek.is_line_terminator env) ->
             raise Try.Rollback
           | _ -> ret
           end
         | _ -> ret
-
       in fun env ->
         match Peek.token env, Peek.is_identifier env with
         | T_YIELD, _ when (allow_yield env) -> yield env
@@ -998,10 +1138,10 @@ end = struct
         | T_LESS_THAN, _
         | _, true ->
 
-          (* Ok, we don't know if this is going to be an arrow function of a
-          * regular assignment expression. Let's first try to parse it as an
-          * assignment expression. If that fails we'll try an arrow function.
-          *)
+          (* Ok, we don't know if this is going to be an arrow function or a
+           * regular assignment expression. Let's first try to parse it as an
+           * assignment expression. If that fails we'll try an arrow function.
+           *)
           (match Try.to_parse env try_assignment_but_not_arrow_function with
           | Try.ParsedSuccessfully expr -> expr
           | Try.FailedToParse ->
@@ -1045,6 +1185,7 @@ end = struct
 
     and is_lhs = Expression.(function
       | _, Member _
+      | _, MetaProperty _
       | _, Identifier _ -> true
       | _, Array _
       | _, Object _
@@ -1052,6 +1193,7 @@ end = struct
       | _, TemplateLiteral _
       | _, TaggedTemplate _
       | _, This
+      | _, Super
       | _, Class _
       | _, Function _
       | _, New _
@@ -1068,18 +1210,19 @@ end = struct
       | _, ArrowFunction _
       | _, Yield _
       | _, JSXElement _
-      | _, Let _
       | _, TypeCast _ -> false)
 
     and is_assignable_lhs = Expression.(function
       | _, Array _
       | _, Object _
       | _, Member _
+      | _, MetaProperty _
       | _, Identifier _ -> true
       | _, Literal _
       | _, TemplateLiteral _
       | _, TaggedTemplate _
       | _, This
+      | _, Super
       | _, Class _
       | _, Function _
       | _, New _
@@ -1096,7 +1239,6 @@ end = struct
       | _, ArrowFunction _
       | _, Yield _
       | _, JSXElement _
-      | _, Let _
       | _, TypeCast _ -> false)
 
 
@@ -1279,7 +1421,7 @@ end = struct
               if not (is_lhs argument)
               then error_at env (fst argument, Error.InvalidLHSInAssignment);
               (match argument with
-              | _, Expression.Identifier (_, { Identifier.name; _ })
+              | _, Expression.Identifier (_, name)
                 when is_restricted name ->
                   strict_error env Error.StrictLHSPrefix
               | _ -> ());
@@ -1318,7 +1460,7 @@ end = struct
           if not (is_lhs argument)
           then error_at env (fst argument, Error.InvalidLHSInAssignment);
           (match argument with
-          | _, Expression.Identifier (_, { Identifier.name; _ })
+          | _, Expression.Identifier (_, name)
             when is_restricted name ->
               strict_error env Error.StrictLHSPostfix
           | _ -> ());
@@ -1331,22 +1473,26 @@ end = struct
           }))
 
     and left_hand_side env =
+      let start_loc = Peek.loc env in
+      let allow_new = not (no_new env) in
+      let env = with_no_new false env in
       let expr = match Peek.token env with
-      | T_NEW -> _new env (fun new_expr _args -> new_expr)
+      | T_NEW when allow_new -> new_expression env
       | _ when Peek.is_function env -> _function env
       | _ -> primary env in
-      let expr = member env expr in
+      let expr = member env start_loc expr in
       match Peek.token env with
-      | T_LPAREN -> call env expr
+      | T_LPAREN -> call env start_loc expr
       | T_TEMPLATE_PART part ->
-          member env (tagged_template env expr part)
+          member env start_loc (tagged_template env start_loc expr part)
       | _ -> expr
 
-    and call env left =
+    and call env start_loc left =
       match Peek.token env with
       | T_LPAREN when not (no_call env) ->
           let args_loc, arguments = arguments env in
-          call env (Loc.btwn (fst left) args_loc, Expression.(Call Call.({
+          let loc = Loc.btwn start_loc args_loc in
+          call env start_loc (loc, Expression.(Call Call.({
             callee = left;
             arguments;
           })))
@@ -1354,9 +1500,9 @@ end = struct
           Expect.token env T_LBRACKET;
           let expr = Parse.expression env in
           let last_loc = Peek.loc env in
-          let loc = Loc.btwn (fst left) last_loc in
+          let loc = Loc.btwn start_loc last_loc in
           Expect.token env T_RBRACKET;
-          call env (loc, Expression.(Member Member.({
+          call env start_loc (loc, Expression.(Member Member.({
             _object  = left;
             property = PropertyExpression expr;
             computed = true;
@@ -1364,44 +1510,55 @@ end = struct
       | T_PERIOD ->
           Expect.token env T_PERIOD;
           let id, _ = identifier_or_reserved_keyword env in
-          call env (Loc.btwn (fst left) (fst id), Expression.(Member Member.({
+          let loc = Loc.btwn start_loc (fst id) in
+          call env start_loc (loc, Expression.(Member Member.({
             _object  = left;
             property = PropertyIdentifier id;
             computed = false;
           })))
-      | T_TEMPLATE_PART part -> tagged_template env left part
+      | T_TEMPLATE_PART part -> tagged_template env start_loc left part
       | _ -> left
 
-    and _new env finish_fn =
-      match Peek.token env with
-      | T_NEW ->
-          let start_loc = Peek.loc env in
-          Expect.token env T_NEW;
-          let finish_fn' callee args =
-            let end_loc, arguments = match args with
-            | Some (loc, args) -> loc, args
-            | _ -> fst callee, [] in
-            let callee' = Loc.btwn start_loc end_loc, Expression.(New New.({
-              callee;
-              arguments;
-            })) in
-            finish_fn callee' None in
-          _new env finish_fn'
-      | _ ->
-          let expr = match Peek.token env with
-          | _ when Peek.is_function env -> _function env
-          | _ -> primary env in
-          let callee = member (env |> with_no_call true) expr in
-          (* You can do something like
-           *   new raw`42`
-           *)
-          let callee = match Peek.token env with
-          | T_TEMPLATE_PART part -> tagged_template env callee part
-          | _ -> callee in
-          let args = match Peek.token env with
-          | T_LPAREN -> Some (arguments env)
-          | _ -> None in
-          finish_fn callee args
+    and new_expression env =
+      let start_loc = Peek.loc env in
+      Expect.token env T_NEW;
+
+      if in_function env && Peek.token env = T_PERIOD then begin
+        Expect.token env T_PERIOD;
+        let meta = start_loc, "new" in
+        if Peek.value env = "target" then
+          let property = Parse.identifier env in
+          let end_loc = fst property in
+          Loc.btwn start_loc end_loc, Expression.(MetaProperty MetaProperty.({
+            meta;
+            property;
+          }))
+        else begin
+          error_unexpected env;
+          Eat.token env; (* skip unknown identifier *)
+          start_loc, Expression.Identifier meta (* return `new` identifier *)
+        end
+      end else
+        let callee_loc = Peek.loc env in
+        let expr = match Peek.token env with
+        | T_NEW -> new_expression env
+        | _ when Peek.is_function env -> _function env
+        | _ -> primary env in
+        let callee = member (env |> with_no_call true) callee_loc expr in
+        (* You can do something like
+         *   new raw`42`
+         *)
+        let callee = match Peek.token env with
+        | T_TEMPLATE_PART part -> tagged_template env callee_loc callee part
+        | _ -> callee in
+        let end_loc, arguments = match Peek.token env with
+        | T_LPAREN -> arguments env
+        | _ -> fst callee, [] in
+
+        Loc.btwn start_loc end_loc, Expression.(New New.({
+          callee;
+          arguments;
+        }))
 
     and arguments =
       let argument env =
@@ -1436,14 +1593,15 @@ end = struct
         Expect.token env T_RPAREN;
         Loc.btwn start_loc end_loc, args
 
-    and member env left =
+    and member env start_loc left =
       match Peek.token env with
       | T_LBRACKET ->
           Expect.token env T_LBRACKET;
           let expr = Parse.expression (env |> with_no_call false) in
           let last_loc = Peek.loc env in
           Expect.token env T_RBRACKET;
-          call env (Loc.btwn (fst left) last_loc, Expression.(Member Member.({
+          let loc = Loc.btwn start_loc last_loc in
+          call env start_loc (loc, Expression.(Member Member.({
             _object  = left;
             property = PropertyExpression expr;
             computed = true;
@@ -1451,7 +1609,8 @@ end = struct
       | T_PERIOD ->
           Expect.token env T_PERIOD;
           let id, _ = identifier_or_reserved_keyword env in
-          call env (Loc.btwn (fst left) (fst id), Expression.(Member Member.({
+          let loc = Loc.btwn start_loc (fst id) in
+          call env start_loc (loc, Expression.(Member Member.({
             _object  = left;
             property = PropertyIdentifier id;
             computed = false;
@@ -1462,7 +1621,7 @@ end = struct
       let start_loc = Peek.loc env in
       let async = Declaration.async env in
       Expect.token env T_FUNCTION;
-      let generator = Declaration.generator env async in
+      let generator = Declaration.generator env in
       let id, typeParameters =
         if Peek.token env = T_LPAREN
         then None, None
@@ -1472,12 +1631,11 @@ end = struct
             | _ -> Some (Parse.identifier ~restricted_error:Error.StrictFunctionName env) in
           id, Type.type_parameter_declaration env
         end in
-      let predicate = is_predicate id in
-      let params, defaults, rest = Declaration.function_params env in
-      let returnType = Type.annotation_opt env in
+      let params = Declaration.function_params env in
+      let returnType, predicate = Type.annotation_and_predicate_opt env in
       let end_loc, body, strict =
         Declaration.function_body env ~async ~generator in
-      let simple = Declaration.is_simple_function_params params defaults rest in
+      let simple = Declaration.is_simple_function_params params in
       Declaration.strict_post_check env ~strict ~simple id params;
       let expression = Function.(
         match body with
@@ -1486,8 +1644,6 @@ end = struct
       Loc.btwn start_loc end_loc, Expression.(Function Function.({
         id;
         params;
-        defaults;
-        rest;
         body;
         generator;
         async;
@@ -1557,11 +1713,7 @@ end = struct
       | T_SUPER ->
           let loc = Peek.loc env in
           Expect.token env T_SUPER;
-          let id = loc, {
-            Identifier.name = "super";
-            typeAnnotation = None;
-            optional = false; } in
-          loc, Expression.Identifier id
+          loc, Expression.Super
       | _ when Peek.is_identifier env ->
           let id = Parse.identifier env in
           fst id, Expression.Identifier id
@@ -1626,9 +1778,9 @@ end = struct
           expressions;
         })
 
-    and tagged_template env tag part =
+    and tagged_template env start_loc tag part =
       let quasi = template_literal env part in
-      Loc.btwn (fst tag) (fst quasi), Expression.(TaggedTemplate TaggedTemplate.({
+      Loc.btwn start_loc (fst quasi), Expression.(TaggedTemplate TaggedTemplate.({
         tag;
         quasi;
       }))
@@ -1665,6 +1817,7 @@ end = struct
             let elem = Expression.(Spread (loc, SpreadElement.({
               argument;
             }))) in
+            if Peek.token env <> T_RBRACKET then Expect.token env T_COMMA;
             elements env ((Some elem)::acc)
         | _ ->
             let elem = Expression.Expression (assignment env) in
@@ -1693,7 +1846,7 @@ end = struct
       Eat.pop_lex_mode env;
       let filtered_flags = Buffer.create (String.length raw_flags) in
       String.iter (function
-        | 'g' | 'i' | 'm' | 'y' as c -> Buffer.add_char filtered_flags c
+        | 'g' | 'i' | 'm' | 'u' | 'y' as c -> Buffer.add_char filtered_flags c
         | _ -> ()) raw_flags;
       let flags = Buffer.contents filtered_flags in
       if flags <> raw_flags
@@ -1719,17 +1872,28 @@ end = struct
          * that it's an async function *)
         let async = Peek.token ~i:1 env <> T_ARROW && Declaration.async env in
         let typeParameters = Type.type_parameter_declaration env in
-        let params, defaults, rest, returnType =
+        let params, returnType, predicate =
           (* Disallow all fancy features for identifier => body *)
           if Peek.is_identifier env && typeParameters = None
           then
-            let id =
+            let loc, name =
               Parse.identifier ~restricted_error:Error.StrictParamName env in
-            let param = fst id, Pattern.Identifier id in
-            [param], [], None, None
+            let param = loc, Pattern.Identifier {
+              Pattern.Identifier.name = loc, name;
+                                 typeAnnotation=None;
+                                 optional=false;
+            } in
+            ([param], None), None, None
           else
-            let params, defaults, rest = Declaration.function_params env in
-            params, defaults, rest, Type.annotation_opt env in
+            let params = Declaration.function_params env in
+            (* There's an ambiguity if you use a function type as the return
+             * type for an arrow function. So we disallow anonymous function
+             * types in arrow function return types unless the function type is
+             * enclosed in parens *)
+            let returnType, predicate = env
+              |> with_no_anon_function_type true
+              |> Type.annotation_and_predicate_opt in
+            params, returnType, predicate in
 
         (* It's hard to tell if an invalid expression was intended to be an
          * arrow function before we see the =>. If there are no params, that
@@ -1737,10 +1901,11 @@ end = struct
          * rest params indicate arrow functions. Therefore, if we see a rest
          * param or an empty param list then we can disable the rollback and
          * instead generate errors as if we were parsing an arrow function *)
-        let env =
-          if params = [] || rest <> None
-          then without_error_callback env
-          else env in
+        let env = match params with
+          | _, Some _
+          | [], _ -> without_error_callback env
+          | _ -> env
+        in
 
         if Peek.is_line_terminator env && Peek.token env = T_ARROW
         then error env Error.NewlineBeforeArrow;
@@ -1753,8 +1918,7 @@ end = struct
           (Declaration.concise_function_body ~async ~generator:false)
           env
         in
-        let simple =
-          Declaration.is_simple_function_params params defaults rest in
+        let simple = Declaration.is_simple_function_params params in
         Declaration.strict_post_check env ~strict ~simple None params;
         let expression = Function.(
           match body with
@@ -1764,13 +1928,10 @@ end = struct
         loc, Expression.(ArrowFunction Function.({
           id = None;
           params;
-          defaults;
-          rest;
           body;
           async;
           generator = false; (* arrow functions cannot be generators *)
-          (* TODO: add syntax support for arrow predicates *)
-          predicate = false;
+          predicate;
           expression;
           returnType;
           typeParameters;
@@ -1870,11 +2031,7 @@ end = struct
             None
         in
         Eat.token env;
-        (lex_loc, Identifier.({
-          name = lex_value;
-          typeAnnotation = None;
-          optional = false;
-        })), err
+        (lex_loc, lex_value), err
   end
 
   (* A module for parsing various object related things, like object literals
@@ -1927,42 +2084,44 @@ end = struct
     let _method env kind =
       (* this is a getter or setter, it cannot be async *)
       let async = false in
-      let generator = Declaration.generator env async in
-      let _, key = key env in
+      let generator = Declaration.generator env in
+      let key_loc, key = key env in
+      let start_loc = Peek.loc env in
       (* It's not clear how type params on getters & setters would make sense
        * in Flow's type system. Since this is a Flow syntax extension, we might
        * as well disallow it until we need it *)
       let typeParameters = Ast.Expression.Object.Property.(match kind with
       | Get | Set -> None
       | _ -> Type.type_parameter_declaration env) in
-      Expect.token env T_LPAREN;
-      let params = Ast.Expression.Object.Property.(match kind with
-      | Get -> []
-      | Set ->
-        (* TODO: support more param pattern types here *)
-        let param = Parse.identifier_with_type env Error.StrictParamName in
-        [ (fst param, Pattern.Identifier param) ]
-      | Init -> assert false) in
-      Expect.token env T_RPAREN;
+      let params = Declaration.function_params env in
+      Ast.Expression.Object.Property.(match kind, params with
+      | Get, ([], None) -> ()
+      | Set, ([(_, Pattern.Assignment _)], None) ->
+          (* defaults don't make sense on a setter *)
+          error_at env (key_loc, Error.SetterArity)
+      | Set, (_, Some _rest) ->
+          (* rest params don't make sense on a setter *)
+          error_at env (key_loc, Error.SetterArity)
+      | Set, ([_], _) -> ()
+      | Get, _ -> error_at env (key_loc, Error.GetterArity)
+      | Set, _ -> error_at env (key_loc, Error.SetterArity)
+      | Init, _ -> ());
       let returnType = Type.annotation_opt env in
       let _, body, strict = Declaration.function_body env ~async ~generator in
-      let defaults = [] in
-      let rest = None in
-      let simple = Declaration.is_simple_function_params params defaults rest in
+      let simple = Declaration.is_simple_function_params params in
       Declaration.strict_post_check env ~strict ~simple None params;
       let end_loc, expression = Function.(
         match body with
         | BodyBlock (loc, _) -> loc, false
         | BodyExpression (loc, _) -> loc, true) in
-      let value = end_loc, Function.({
+      let loc = Loc.btwn start_loc end_loc in
+      let value = loc, Function.({
         id = None;
         params;
-        defaults;
-        rest;
         body;
         generator;
         async;
-        predicate = false; (* setters/getter are not predicates *)
+        predicate = None; (* setters/getter are not predicates *)
         expression;
         returnType;
         typeParameters;
@@ -1983,21 +2142,24 @@ end = struct
         end else begin
           (* look for a following identifier to tell whether to parse a function
            * or not *)
-          let async = Peek.is_identifier ~i:1 env && Declaration.async env in
-          Property (match async , Declaration.generator env async, key env with
-          | false, false, (_, (Property.Identifier (_, { Ast.Identifier.name =
-              "get"; _}) as key)) ->
+          let async =
+            Peek.is_literal_property_name ~i:1 env && Declaration.async env in
+          Property (match async , Declaration.generator env, key env with
+          | false, false, (_, (Property.Identifier (_, "get") as key)) ->
               (match Peek.token env with
               | T_COLON
               | T_LESS_THAN
-              | T_LPAREN -> init env start_loc key false false
+              | T_LPAREN
+              | T_COMMA
+              | T_RCURLY -> init env start_loc key false false
               | _ -> get env start_loc)
-          | false, false, (_, (Property.Identifier (_, { Ast.Identifier.name =
-              "set"; _}) as key)) ->
+          | false, false, (_, (Property.Identifier (_, "set") as key)) ->
               (match Peek.token env with
               | T_COLON
               | T_LESS_THAN
-              | T_LPAREN -> init env start_loc key false false
+              | T_LPAREN
+              | T_COMMA
+              | T_RCURLY -> init env start_loc key false false
               | _ -> set env start_loc)
           | async, generator, (_, key) ->
               init env start_loc key async generator
@@ -2041,27 +2203,27 @@ end = struct
                 | Computed expr -> expr), true, false
             | T_LESS_THAN
             | T_LPAREN ->
+                let start_loc = Peek.loc env in
                 let typeParameters = Type.type_parameter_declaration env in
-                let params, defaults, rest = Declaration.function_params env in
+                let params = Declaration.function_params env in
                 let returnType = Type.annotation_opt env in
                 let _, body, strict =
                   Declaration.function_body env ~async ~generator in
-                let simple = Declaration.is_simple_function_params params defaults rest in
+                let simple = Declaration.is_simple_function_params params in
                 Declaration.strict_post_check env ~strict ~simple None params;
-                let end_loc, expression = Function.(
-                  match body with
-                  | BodyBlock (loc, _) -> loc, false
-                  | BodyExpression (loc, _) -> loc, true) in
-                let value = end_loc, Ast.Expression.(Function Function.({
+                let end_loc, expression = match body with
+                  | Function.BodyBlock (loc, _) -> loc, false
+                  | Function.BodyExpression (loc, _) -> loc, true
+                in
+                let loc = Loc.btwn start_loc end_loc in
+                let value = loc, Ast.Expression.(Function Function.({
                   id = None;
                   params;
-                  defaults;
-                  rest;
                   body;
                   generator;
                   async;
-                  (* TODO: add support for objec method predicates *)
-                  predicate = false;
+                  (* TODO: add support for object method predicates *)
+                  predicate = None;
                   expression;
                   returnType;
                   typeParameters;
@@ -2079,56 +2241,19 @@ end = struct
           }
         )
 
-      and check_property env prop_map prop = Ast.Expression.Object.(
-        match prop with
-        | Property (prop_loc, ({ Property.key = Property.Literal _ | Property.Identifier _; _ } as prop)) ->
-            Property.(
-              let key = match prop.key with
-              | Literal (_, { Literal.value = Literal.String s; _; } ) -> s
-              | Literal (_, { Literal.value = Literal.Boolean b; _; } ) -> string_of_bool b
-              | Literal (_, { Literal.value = Literal.Null; _; } ) -> "null"
-              | Literal (_, { Literal.value = Literal.Number f; _; } ) -> string_of_float f
-              | Literal (_, { Literal.value = Literal.RegExp _; _; } ) ->
-                  failwith "RegExp cannot be property key"
-              | Identifier (_, { Identifier.name; _ }) -> name
-              | Computed _ -> assert false in
-              let prev_kinds =
-                try SMap.find key prop_map
-                with Not_found -> SSet.empty in
-              let kind_string = match prop.kind with
-              | Init -> "Init"
-              | Get -> "Get"
-              | Set -> "Set" in
-              (match kind_string with
-              | "Init" when SSet.mem "Init" prev_kinds ->
-                  strict_error_at env (prop_loc, Error.StrictDuplicateProperty)
-              | "Init" when SSet.mem "Set" prev_kinds || SSet.mem "Get" prev_kinds ->
-                  error_at env (prop_loc, Error.AccessorDataProperty)
-              | "Get"
-              | "Set" when SSet.mem "Init" prev_kinds ->
-                  error_at env (prop_loc, Error.AccessorDataProperty)
-              | ("Get" | "Set") as kind when SSet.mem kind prev_kinds ->
-                  error_at env (prop_loc, Error.AccessorGetSet)
-              | _ -> ());
-              let kinds = SSet.add kind_string prev_kinds in
-              SMap.add key kinds prop_map)
-        | _ -> prop_map
-      )
-
-      and properties env (prop_map, acc) =
+      and properties env acc =
         match Peek.token env with
         | T_EOF
         | T_RCURLY -> List.rev acc
         | _ ->
             let prop = property env in
-            let prop_map = check_property env prop_map prop in
             if Peek.token env <> T_RCURLY then Expect.token env T_COMMA;
-            properties env (prop_map, prop::acc)
+            properties env (prop::acc)
 
       in fun env ->
         let start_loc = Peek.loc env in
         Expect.token env T_LCURLY;
-        let props = properties env (SMap.empty, []) in
+        let props = properties env [] in
         let end_loc = Peek.loc env in
         Expect.token env T_RCURLY;
         Loc.btwn start_loc end_loc, Ast.Expression.Object.({
@@ -2219,7 +2344,11 @@ end = struct
           decorators;
         })))
 
-      in let init env start_loc decorators key async generator static =
+      in let error_unsupported_variance env = function
+      | Some (loc, _) -> error_at env (loc, Error.UnexpectedVariance)
+      | None -> ()
+
+      in let rec init env start_loc decorators key async generator static variance =
         match Peek.token env with
         | T_COLON
         | T_ASSIGN
@@ -2246,39 +2375,42 @@ end = struct
             value;
             typeAnnotation;
             static;
+            variance;
           })))
+        | T_PLING ->
+          (* TODO: add support for optional class properties *)
+          error_unexpected env;
+          Eat.token env;
+          init env start_loc decorators key async generator static variance
         | _ ->
+          error_unsupported_variance env variance;
+          let func_loc = Peek.loc env in
           let typeParameters = Type.type_parameter_declaration env in
-          let params, defaults, rest = Declaration.function_params env in
+          let params = Declaration.function_params env in
           let returnType = Type.annotation_opt env in
           let _, body, strict =
             Declaration.function_body env ~async ~generator in
-          let simple =
-            Declaration.is_simple_function_params params defaults rest in
+          let simple = Declaration.is_simple_function_params params in
           Declaration.strict_post_check env ~strict ~simple None params;
           let end_loc, expression = Function.(
             match body with
             | BodyBlock (loc, _) -> loc, false
             | BodyExpression (loc, _) -> loc, true) in
-          let value = end_loc, Function.({
+          let loc = Loc.btwn func_loc end_loc in
+          let value = loc, Function.({
             id = None;
             params;
-            defaults;
-            rest;
             body;
             generator;
             async;
             (* TODO: add support for method predicates *)
-            predicate = false;
+            predicate = None;
             expression;
             returnType;
             typeParameters;
           }) in
           let kind = Ast.(match key with
-            | Expression.Object.Property.Identifier (_, {
-                Identifier.name = "constructor";
-                _;
-              })
+            | Expression.Object.Property.Identifier (_, "constructor")
             | Expression.Object.Property.Literal (_, {
                 Literal.value = Literal.String "constructor";
                 _;
@@ -2297,33 +2429,47 @@ end = struct
       in fun env -> Ast.Expression.Object.Property.(
         let start_loc = Peek.loc env in
         let decorators = decorator_list env in
-        let static = Expect.maybe env T_STATIC in
+        let static =
+          Peek.token ~i:1 env <> T_LPAREN &&
+          Peek.token ~i:1 env <> T_LESS_THAN &&
+          Expect.maybe env T_STATIC in
         let async =
           Peek.token ~i:1 env <> T_LPAREN &&
           Peek.token ~i:1 env <> T_COLON &&
           Declaration.async env in
-        let generator = Declaration.generator env async in
+        let generator = Declaration.generator env in
+        let variance = Declaration.variance env async generator in
+        let generator = match generator, variance with
+        | false, Some _ -> Declaration.generator env
+        | _ -> generator
+        in
         match (async, generator, key env) with
         | false, false,
-          (_, (Identifier (_, { Identifier.name = "get"; _ }) as key)) ->
+          (_, (Identifier (_, "get") as key)) ->
             (match Peek.token env with
             | T_LESS_THAN
             | T_COLON
             | T_ASSIGN
             | T_SEMICOLON
-            | T_LPAREN -> init env start_loc decorators key async generator static
-            | _ -> get env start_loc decorators static )
+            | T_LPAREN ->
+              init env start_loc decorators key async generator static variance
+            | _ ->
+              error_unsupported_variance env variance;
+              get env start_loc decorators static)
         | false, false,
-          (_, (Identifier (_, { Identifier.name = "set"; _ }) as key)) ->
+          (_, (Identifier (_, "set") as key)) ->
             (match Peek.token env with
             | T_LESS_THAN
             | T_COLON
             | T_ASSIGN
             | T_SEMICOLON
-            | T_LPAREN -> init env start_loc decorators key async generator static
-            | _ -> set env start_loc decorators static)
+            | T_LPAREN ->
+              init env start_loc decorators key async generator static variance
+            | _ ->
+              error_unsupported_variance env variance;
+              set env start_loc decorators static)
         | _, _, (_, key) ->
-            init env start_loc decorators key async generator static
+            init env start_loc decorators key async generator static variance
       )
 
     let class_declaration env decorators =
@@ -2414,8 +2560,8 @@ end = struct
         if Peek.token env = T_SEMICOLON || Peek.is_implicit_semicolon env
         then None
         else begin
-          let label = Parse.identifier env in
-          let name = (snd label).Identifier.name in
+          let (_, name) as label =
+            Parse.identifier env in
           if not (SSet.mem name (labels env))
           then error env (Error.UnknownLabel name);
           Some label
@@ -2441,7 +2587,8 @@ end = struct
         if Peek.token env = T_SEMICOLON || Peek.is_implicit_semicolon env
         then None
         else begin
-          let (_, { Identifier.name; _ }) as label = Parse.identifier env in
+          let (_, name) as label =
+            Parse.identifier env in
           if not (SSet.mem name (labels env))
           then error env (Error.UnknownLabel name);
           Some label
@@ -2519,6 +2666,7 @@ end = struct
       fun env ->
         let start_loc = Peek.loc env in
         Expect.token env T_FOR;
+        let async = allow_await env && Expect.maybe env T_AWAIT in
         Expect.token env T_LPAREN;
 
         let init, errs =
@@ -2539,6 +2687,24 @@ end = struct
         in
 
         match Peek.token env with
+        (* If `async` is true, this must be a for-await-of loop. *)
+        | t when t = T_OF || async ->
+            assert_can_be_forin_or_forof env Error.InvalidLHSInForOf init;
+            let left = Statement.(match init with
+            | Some (For.InitDeclaration decl) -> ForOf.LeftDeclaration decl
+            | Some (For.InitExpression expr) -> ForOf.LeftExpression expr
+            | None -> assert false) in
+            (* This is a for of loop *)
+            Expect.token env T_OF;
+            let right = Parse.assignment env in
+            Expect.token env T_RPAREN;
+            let body = Parse.statement (env |> with_in_loop true) in
+            Loc.btwn start_loc (fst body), Statement.(ForOf ForOf.({
+              left;
+              right;
+              body;
+              async;
+            }))
         | T_IN ->
             assert_can_be_forin_or_forof env Error.InvalidLHSInForIn init;
             let left = Statement.(match init with
@@ -2555,22 +2721,6 @@ end = struct
               right;
               body;
               each = false;
-            }))
-        | T_OF ->
-            assert_can_be_forin_or_forof env Error.InvalidLHSInForOf init;
-            let left = Statement.(match init with
-            | Some (For.InitDeclaration decl) -> ForOf.LeftDeclaration decl
-            | Some (For.InitExpression expr) -> ForOf.LeftExpression expr
-            | None -> assert false) in
-            (* This is a for of loop *)
-            Expect.token env T_OF;
-            let right = Parse.assignment env in
-            Expect.token env T_RPAREN;
-            let body = Parse.statement (env |> with_in_loop true) in
-            Loc.btwn start_loc (fst body), Statement.(ForOf ForOf.({
-              left;
-              right;
-              body;
             }))
         | _ ->
             (* This is a for loop *)
@@ -2681,7 +2831,6 @@ end = struct
         Loc.btwn start_loc end_loc, Statement.(Switch Switch.({
           discriminant;
           cases;
-          lexical = false; (* TODO *)
         }))
 
     and throw env =
@@ -2708,20 +2857,19 @@ end = struct
           Expect.token env T_CATCH;
           Expect.token env T_LPAREN;
           let id = Parse.identifier ~restricted_error:Error.StrictCatchVariable env in
-          let param = fst id, Pattern.Identifier id in
+          let param = fst id, Pattern.Identifier {
+            Pattern.Identifier.name=id;
+                               typeAnnotation=None;
+                               optional=false;
+          } in
           Expect.token env T_RPAREN;
           let body = Parse.block_body env in
           let loc = Loc.btwn start_loc (fst body) in
           Some (loc, Ast.Statement.Try.CatchClause.({
             param;
-            (* This SpiderMonkey specific feature is not on track to be in a
-            * standard so I'm not supporting it *)
-            guard = None;
             body;
           }))
       | _ -> None in
-      (* SpiderMonkey feature, not supported in ES6 *)
-      let guardedHandlers = [] in
       let finalizer = match Peek.token env with
       | T_FINALLY ->
           Expect.token env T_FINALLY;
@@ -2739,7 +2887,6 @@ end = struct
       Loc.btwn start_loc end_loc, Statement.(Try Try.({
         block;
         handler;
-        guardedHandlers;
         finalizer;
       }));
 
@@ -2755,43 +2902,20 @@ end = struct
     and _let env =
       let start_loc = Peek.loc env in
       Expect.token env T_LET;
-      if Peek.token env = T_LPAREN
-      then begin
-        (* Let statement *)
-        Expect.token env T_LPAREN;
-        let end_loc, declarations, errs =
-          Declaration.variable_declaration_list (env |> with_no_let true) in
-        let head = List.map
-          (fun (_, {Ast.Statement.VariableDeclaration.Declarator.id; init;}) ->
-            Statement.Let.({ id; init; }))
-          declarations in
-        Expect.token env T_RPAREN;
-        let body = Parse.statement env in
-        let end_loc = match Peek.semicolon_loc env with
-        | None -> end_loc
-        | Some end_loc -> end_loc in
-        Eat.semicolon env;
-        errs |> List.iter (error_at env);
-        Loc.btwn start_loc end_loc, Statement.(Let Let.({
-          head;
-          body;
-        }))
-      end else begin
-        (* Let declaration *)
-        let end_loc, declarations, errs =
-          Declaration.variable_declaration_list (env |> with_no_let true) in
-        let declaration =
-          Ast.(Statement.VariableDeclaration Statement.VariableDeclaration.({
-            declarations;
-            kind = Let;
-          })) in
-        let end_loc = match Peek.semicolon_loc env with
-        | None -> end_loc
-        | Some end_loc -> end_loc in
-        Eat.semicolon env;
-        errs |> List.iter (error_at env);
-        Loc.btwn start_loc end_loc, declaration
-      end
+      (* Let declaration *)
+      let end_loc, declarations, errs =
+        Declaration.variable_declaration_list (env |> with_no_let true) in
+      let declaration =
+        Ast.(Statement.VariableDeclaration Statement.VariableDeclaration.({
+          declarations;
+          kind = Let;
+        })) in
+      let end_loc = match Peek.semicolon_loc env with
+      | None -> end_loc
+      | Some end_loc -> end_loc in
+      Eat.semicolon env;
+      errs |> List.iter (error_at env);
+      Loc.btwn start_loc end_loc, declaration
 
     and _while env =
       let start_loc = Peek.loc env in
@@ -2827,7 +2951,7 @@ end = struct
       let expr = Parse.expression env in
       match (expr, Peek.token env) with
       | ((loc, Ast.Expression.Identifier label), T_COLON) ->
-          let { Identifier.name; _ } = snd label in
+          let _, name = label in
           Expect.token env T_COLON;
           if SSet.mem name (labels env)
           then error_at env (loc, Error.Redeclaration ("Label", name));
@@ -2847,12 +2971,12 @@ end = struct
           }))
 
     and expression env =
-      let expression = Parse.expression env in
-      let end_loc = match Peek.semicolon_loc env with
-      | Some loc -> loc
-      | None -> fst expression in
+      let loc, expression = with_loc Parse.expression env in
+      let loc = match Peek.semicolon_loc env with
+      | Some semicolon_loc -> Loc.btwn loc semicolon_loc
+      | None -> loc in
       Eat.semicolon env;
-      Loc.btwn (fst expression) end_loc, Statement.(Expression Expression.({
+      loc, Statement.(Expression Expression.({
         expression;
       }))
 
@@ -2865,9 +2989,6 @@ end = struct
       let id = Parse.identifier env in
       let typeParameters = Type.type_parameter_declaration_with_defaults env in
       Expect.token env T_ASSIGN;
-      (match Peek.token env with
-      | T_BIT_OR | T_BIT_AND -> Eat.token env
-      | _ -> ());
       let right = Type._type env in
       let end_loc = match Peek.semicolon_loc env with
       | None -> fst right
@@ -2973,28 +3094,29 @@ end = struct
       let id = Parse.identifier env in
       let start_sig_loc = Peek.loc env in
       let typeParameters = Type.type_parameter_declaration env in
-      let rest, params = Type.function_param_list env in
+      let params = Type.function_param_list env in
       Expect.token env T_COLON;
       let returnType = Type._type env in
       let end_loc = fst returnType in
+      let predicate = Type.predicate_opt env in
       let loc = Loc.btwn start_sig_loc end_loc in
-      let value = loc, Ast.Type.(Function {Function.
+      let typeAnnotation = loc, Ast.Type.(Function {Function.
         params;
         returnType;
-        rest;
         typeParameters;
       }) in
-      let typeAnnotation = Some ((fst value), value) in
-      let id =
-        Loc.btwn (fst id) end_loc,
-        Ast.Identifier.({(snd id) with typeAnnotation; })
-      in
+      let typeAnnotation = fst typeAnnotation, typeAnnotation in
+      let id = Loc.btwn (fst id) end_loc, snd id in
       let end_loc = match Peek.semicolon_loc env with
       | None -> end_loc
       | Some end_loc -> end_loc in
       Eat.semicolon env;
       let loc = Loc.btwn start_loc end_loc in
-      loc, Statement.DeclareFunction.({ id; })
+      loc, Statement.DeclareFunction.({
+        id;
+        typeAnnotation;
+        predicate;
+      })
 
     and declare_function_statement env start_loc =
       let loc, fn = declare_function env start_loc in
@@ -3002,13 +3124,14 @@ end = struct
 
     and declare_var env start_loc =
       Expect.token env T_VAR;
-      let id = Parse.identifier_with_type env Error.StrictVarName in
+      let loc, { Pattern.Identifier.name; typeAnnotation; _; } =
+        Parse.identifier_with_type env ~no_optional:true Error.StrictVarName in
       let end_loc = match Peek.semicolon_loc env with
-      | None -> fst id
+      | None -> loc
       | Some loc -> loc in
       let loc = Loc.btwn start_loc end_loc in
       Eat.semicolon env;
-      loc, Statement.DeclareVariable.({ id; })
+      loc, Statement.DeclareVariable.({ id=name; typeAnnotation; })
 
     and declare_var_statement env start_loc =
       let loc, var = declare_var env start_loc in
@@ -3181,25 +3304,26 @@ end = struct
           List.fold_left (fun acc prop ->
             match prop with
             | Object.Property (_, {Object.Property.pattern; _;})
-            | Object.SpreadProperty (_, {Object.SpreadProperty.argument = pattern;})
+            | Object.RestProperty (_, {Object.RestProperty.argument = pattern;})
               -> fold acc pattern
           ) acc properties
         | (_, Array {Array.elements; _;}) ->
-          List.fold_left (fun acc elem ->
+          List.fold_left Array.(fun acc elem ->
             match elem with
-            | Some (Array.Element pattern)
-            | Some (Array.Spread (_, {Array.SpreadElement.argument = pattern;}))
+            | Some (Element pattern)
+            | Some (RestElement (_, {RestElement.argument = pattern;}))
               -> fold acc pattern
             | None -> acc
           ) acc elements
         | (_, Assignment {Assignment.left;_;}) -> fold acc left
-        | (_, Identifier (loc, {Identifier.name; _;})) -> (loc, name)::acc
+        | (_, Identifier {Pattern.Identifier.name; _; }) ->
+          name::acc
         | (_, Expression _) ->
           failwith "Parser error: No such thing as an expression pattern!"
       ) in
       List.fold_left fold
 
-    and extract_ident_name (_, {Identifier.name; _;}) = name
+    and extract_ident_name (_, name) = name
 
     and export_specifiers_and_errs env specifiers errs =
       match Peek.token env with
@@ -3207,22 +3331,22 @@ end = struct
       | T_RCURLY ->
           List.rev specifiers, List.rev errs
       | _ ->
-          let id, err = Parse.identifier_or_reserved_keyword env in
-          let name, err, end_loc = if Peek.value env = "as"
+          let local, err = Parse.identifier_or_reserved_keyword env in
+          let exported, err, end_loc = if Peek.value env = "as"
           then begin
             Expect.contextual env "as";
             let name, _ = Parse.identifier_or_reserved_keyword env in
             (record_export env (fst name, extract_ident_name name));
             Some name, None, fst name
           end else begin
-            let loc = fst id in
-            record_export env (loc, extract_ident_name id);
+            let loc = fst local in
+            record_export env (loc, extract_ident_name local);
             None, err, loc
           end in
-          let loc = Loc.btwn (fst id) end_loc in
+          let loc = Loc.btwn (fst local) end_loc in
           let specifier = loc, {
-            Statement.ExportDeclaration.Specifier.id;
-            name;
+            Statement.ExportNamedDeclaration.ExportSpecifier.local;
+            exported;
           } in
           if Peek.token env = T_COMMA
           then Expect.token env T_COMMA;
@@ -3235,20 +3359,21 @@ end = struct
       let env = env |> with_strict true |> with_in_export true in
       let start_loc = Peek.loc env in
       Expect.token env T_EXPORT;
-      Statement.ExportDeclaration.(match Peek.token env with
+      match Peek.token env with
       | T_DEFAULT ->
           (* export default ... *)
+          let open Statement.ExportDefaultDeclaration in
           Expect.token env T_DEFAULT;
           record_export env (Loc.btwn start_loc (Peek.loc env), "default");
           let end_loc, declaration = match Peek.token env with
           | T_FUNCTION ->
               (* export default function foo (...) { ... } *)
               let fn = Declaration._function env in
-              fst fn, Some (Declaration fn)
+              fst fn, Declaration fn
           | _ when Peek.is_class env ->
               (* export default class foo { ... } *)
               let _class = Object.class_declaration env decorators in
-              fst _class, Some (Declaration _class)
+              fst _class, Declaration _class
           | _ ->
               (* export default [assignment expression]; *)
               let expr = Parse.assignment env in
@@ -3256,17 +3381,15 @@ end = struct
               | Some loc -> loc
               | None -> fst expr in
               Eat.semicolon env;
-              end_loc, Some (Expression expr)
+              end_loc, Expression expr
             in
-          Loc.btwn start_loc end_loc, Statement.ExportDeclaration {
-            default = true;
+          Loc.btwn start_loc end_loc, Statement.ExportDefaultDeclaration {
             declaration;
-            specifiers = None;
-            source = None;
-            exportKind = ExportValue;
+            exportKind = Statement.ExportValue;
           }
       | T_TYPE when (Peek.token env ~i:1) <> T_LCURLY ->
           (* export type ... *)
+          let open Statement.ExportNamedDeclaration in
           if not (should_parse_types env)
           then error env Error.UnexpectedTypeExport;
           let type_alias = type_alias env in
@@ -3279,15 +3402,15 @@ end = struct
               )
           );
           let end_loc = fst type_alias in
-          Loc.btwn start_loc end_loc, Statement.ExportDeclaration {
-            default = false;
-            declaration = Some (Declaration type_alias);
+          Loc.btwn start_loc end_loc, Statement.ExportNamedDeclaration {
+            declaration = Some type_alias;
             specifiers = None;
             source = None;
-            exportKind = ExportType;
+            exportKind = Statement.ExportType;
           }
       | T_INTERFACE ->
           (* export interface I { ... } *)
+          let open Statement.ExportNamedDeclaration in
           if not (should_parse_types env)
           then error env Error.UnexpectedTypeExport;
           let interface = interface env in
@@ -3300,12 +3423,11 @@ end = struct
               )
           );
           let end_loc = fst interface in
-          Loc.btwn start_loc end_loc, Statement.ExportDeclaration {
-            default = false;
-            declaration = Some (Declaration interface);
+          Loc.btwn start_loc end_loc, Statement.ExportNamedDeclaration {
+            declaration = Some interface;
             specifiers = None;
             source = None;
-            exportKind = ExportType;
+            exportKind = Statement.ExportType;
           }
       | T_LET
       | T_CONST
@@ -3318,6 +3440,7 @@ end = struct
         * cases *)
       | T_ASYNC
       | T_FUNCTION ->
+          let open Statement.ExportNamedDeclaration in
           let stmt = Parse.statement_list_item env ~decorators:decorators in
           let names = Statement.(
             match stmt with
@@ -3338,15 +3461,14 @@ end = struct
             | _ -> failwith "Internal Flow Error! Unexpected export statement declaration!"
           ) in
           List.iter (record_export env) names;
-          let declaration = Some (Declaration stmt) in
-          Loc.btwn start_loc (fst stmt), Statement.ExportDeclaration {
-            default = false;
-            declaration;
+          Loc.btwn start_loc (fst stmt), Statement.ExportNamedDeclaration {
+            declaration = Some stmt;
             specifiers = None;
             source = None;
-            exportKind = ExportValue;
+            exportKind = Statement.ExportValue;
           }
       | T_MULT ->
+          let open Statement.ExportNamedDeclaration in
           let loc = Peek.loc env in
           Expect.token env T_MULT;
           let local_name =
@@ -3370,18 +3492,18 @@ end = struct
           | None -> fst source in
           let source = Some source in
           Eat.semicolon env;
-          Loc.btwn start_loc end_loc, Statement.ExportDeclaration {
-            default = false;
+          Loc.btwn start_loc end_loc, Statement.ExportNamedDeclaration {
             declaration = None;
             specifiers;
             source;
-            exportKind = ExportValue;
+            exportKind = Statement.ExportValue;
           }
       | _ ->
+          let open Statement.ExportNamedDeclaration in
           let exportKind = (
             match Peek.token env with
-            | T_TYPE -> Eat.token env; ExportType
-            | _ -> ExportValue
+            | T_TYPE -> Eat.token env; Statement.ExportType
+            | _ -> Statement.ExportValue
           ) in
           Expect.token env T_LCURLY;
           let specifiers, errs = export_specifiers_and_errs env [] [] in
@@ -3401,14 +3523,12 @@ end = struct
               | Some source -> fst source
               | None -> end_loc) in
           Eat.semicolon env;
-          Loc.btwn start_loc end_loc, Statement.ExportDeclaration {
-            default = false;
+          Loc.btwn start_loc end_loc, Statement.ExportNamedDeclaration {
             declaration = None;
             specifiers;
             source;
             exportKind;
           }
-      )
 
     and declare_export_declaration ?(allow_export_type=false) env =
       if not (should_parse_types env)
@@ -3493,7 +3613,7 @@ end = struct
               else (error env Error.UnexpectedTypeDeclaration; None)
             ) else None
           in
-          let specifiers = Statement.ExportDeclaration.(
+          let specifiers = Statement.ExportNamedDeclaration.(
             Some (ExportBatchSpecifier (loc, local_name))
           ) in
           let source = export_source env in
@@ -3536,7 +3656,7 @@ end = struct
           );
           Expect.token env T_LCURLY;
           let specifiers, errs = export_specifiers_and_errs env [] [] in
-          let specifiers = Some (Statement.ExportDeclaration.ExportSpecifiers specifiers) in
+          let specifiers = Some (Statement.ExportNamedDeclaration.ExportSpecifiers specifiers) in
           let end_loc = Peek.loc env in
           Expect.token env T_RCURLY;
           let source = if Peek.value env = "from"
@@ -3719,7 +3839,7 @@ end = struct
           })))
         | SpreadProperty (loc, { SpreadProperty.argument; }) ->
             let argument = Parse.pattern_from_expr env argument in
-            Pattern.(Object.SpreadProperty (loc, Object.SpreadProperty.({
+            Pattern.Object.(RestProperty (loc, RestProperty.({
               argument;
             }))))
 
@@ -3736,7 +3856,7 @@ end = struct
         | None -> None
         | Some (Spread (loc, spread)) ->
             let argument = Parse.pattern_from_expr env (spread.SpreadElement.argument) in
-            Some Pattern.(Array.Spread (loc, { Array.SpreadElement.argument; }))
+            Some Pattern.Array.(RestElement (loc, { RestElement.argument; }))
         | Some (Expression (loc, expr)) ->
             Some Pattern.Array.(Element (Parse.pattern_from_expr env (loc, expr)))
       )
@@ -3753,7 +3873,11 @@ end = struct
       Ast.Expression.(match expr with
       | Object obj -> object_from_expr env (loc, obj)
       | Array arr ->  array_from_expr env (loc, arr)
-      | Identifier id -> loc, Pattern.Identifier id
+      | Identifier name -> loc, Pattern.Identifier {
+          Pattern.Identifier.name;
+                             typeAnnotation=None;
+                             optional=false;
+      }
       | Assignment { Assignment.operator = Assignment.Assign; left; right } ->
           loc, Pattern.Assignment { Pattern.Assignment.left; right }
       | expr -> loc, Pattern.Expression (loc, expr))
@@ -3766,7 +3890,7 @@ end = struct
         then begin
           let argument = pattern env restricted_error in
           let loc = Loc.btwn start_loc (fst argument) in
-          Some Pattern.Object.(SpreadProperty (loc, SpreadProperty.({
+          Some Pattern.Object.(RestProperty (loc, RestProperty.({
             argument
           })))
         end else begin
@@ -3782,8 +3906,12 @@ end = struct
               Some (pattern env restricted_error, false)
             | _ ->
               (match key with
-              | Pattern.Object.Property.Identifier id ->
-                let pattern = (fst id, Pattern.Identifier id) in
+              | Pattern.Object.Property.Identifier name ->
+                let pattern = (fst name, Pattern.Identifier {
+                  Pattern.Identifier.name;
+                                     typeAnnotation=None;
+                                     optional=false;
+                }) in
                 Some (pattern, true)
               | _ ->
                 error_unexpected env; (* invalid shorthand destructuring *)
@@ -3854,7 +3982,7 @@ end = struct
           Expect.token env T_ELLIPSIS;
           let argument = pattern env restricted_error in
           let loc = Loc.btwn start_loc (fst argument) in
-          let element = Pattern.Array.(Spread (loc, SpreadElement.({
+          let element = Pattern.Array.(RestElement (loc, RestElement.({
             argument;
           }))) in
           elements env ((Some element)::acc)
@@ -3899,8 +4027,8 @@ end = struct
       | T_LBRACKET ->
           _array restricted_error env
       | _ ->
-          let id = Parse.identifier_with_type env restricted_error in
-          fst id, Pattern.Identifier id
+          let loc, id = Parse.identifier_with_type env restricted_error in
+          loc, Pattern.Identifier id
   end
 
   module JSX = struct
@@ -4005,7 +4133,7 @@ end = struct
                 let open JSX.ExpressionContainer in
                 match expression_container.expression with
                 | EmptyExpression _ ->
-                    error env Error.JSXAttributeValueEmptyExpression;
+                    error_at env (loc, Error.JSXAttributeValueEmptyExpression);
                 | _ -> ()
               end;
               loc, Some (JSX.Attribute.ExpressionContainer (loc, expression_container))
@@ -4112,9 +4240,10 @@ end = struct
               (snd namespace).Identifier.name ^ ":" ^ (snd name).Identifier.name
           | MemberExpression (_, { MemberExpression._object; property; }) ->
               let _object = match _object with
-              | MemberExpression.Identifier id -> (snd id).Identifier.name
-              | MemberExpression.MemberExpression e -> normalize (JSX.MemberExpression e) in
-              _object ^ "." ^ (snd property).Identifier.name
+              | MemberExpression.Identifier (_, {Identifier.name=id; _;}) -> id
+              | MemberExpression.MemberExpression e ->
+                  normalize (JSX.MemberExpression e) in
+                  _object ^ "." ^ (snd property).Identifier.name
         )
 
         in fun env start_loc ->
@@ -4322,7 +4451,9 @@ end = struct
     | _ ->
         expr
 
+  and conditional = Expression.conditional
   and assignment = Expression.assignment
+  and left_hand_side = Expression.left_hand_side
   and object_initializer = Object._initializer
   and object_key = Object.key
   and class_declaration = Object.class_declaration
@@ -4358,32 +4489,31 @@ end = struct
     (match restricted_error with
     | Some err when is_restricted name -> strict_error_at env (loc, err)
     | _ -> ());
-    loc, Identifier.({
-      name;
-      typeAnnotation = None;
-      optional = false;
-    })
+    loc, name
 
   and identifier_or_reserved_keyword = Expression.identifier_or_reserved_keyword
 
-  and identifier_with_type env restricted_error =
-    let loc, id = identifier ~restricted_error env in
-    let loc, id =
-      if Peek.token env = T_PLING
-      then begin
+  and identifier_with_type =
+    let with_loc_helper no_optional restricted_error env =
+      let name = identifier ~restricted_error env in
+      let optional = not no_optional && Peek.token env = T_PLING in
+      if optional then begin
         if not (should_parse_types env)
         then error env Error.UnexpectedTypeAnnotation;
-        let loc = Loc.btwn loc (Peek.loc env) in
-        Expect.token env T_PLING;
-        loc, { id with Identifier.optional = true; }
-      end else (loc, id) in
-    if Peek.token env = T_COLON
-    then begin
-      let typeAnnotation = Type.annotation env in
-      let loc = Loc.btwn loc (fst typeAnnotation) in
-      let typeAnnotation = Some typeAnnotation in
-      Identifier.(loc, { id with typeAnnotation; })
-    end else loc, id
+        Expect.token env T_PLING
+      end;
+      let typeAnnotation =
+        if Peek.token env = T_COLON
+        then Some (Type.annotation env)
+        else None in
+      Ast.Pattern.Identifier.({
+        name;
+        optional;
+        typeAnnotation;
+      })
+
+    in fun env ?(no_optional=false) restricted_error ->
+      with_loc (with_loc_helper no_optional restricted_error) env
 
   and block_body env =
     let start_loc = Peek.loc env in
@@ -4407,6 +4537,7 @@ end = struct
 
   and pattern = Pattern.pattern
   and pattern_from_expr = Pattern.from_expr
+
 end
 
 (*****************************************************************************)
@@ -4452,3 +4583,13 @@ let json_file ?(fail=true) ?(token_sink=None) ?(parse_options=None) content file
   | _ ->
     error_unexpected env;
     raise (Error.Error (errors env))
+
+let jsx_pragma_expression =
+  let left_hand_side env =
+    let ast = Parse.left_hand_side (with_no_new true env) in
+    Expect.token env T_EOF;
+    ast
+
+  in fun content filename ->
+    let env = init_env ~token_sink:None ~parse_options:None filename content in
+    do_parse env left_hand_side true

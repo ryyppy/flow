@@ -49,12 +49,6 @@ let set_of_list = List.fold_left (fun acc x -> SSet.add x acc) SSet.empty
 (* ok-or-error type *)
 type ('a,'b) ok_or_err = OK of 'a | Err of 'b
 
-type rw = Read | Write
-
-let string_of_rw = function
-  | Read -> "Read"
-  | Write -> "Write"
-
 let assert_false s =
   let callstack = Printexc.(get_callstack 10 |> raw_backtrace_to_string) in
   prerr_endline (spf "%s%s\n%s:\n%s%s%s"
@@ -90,6 +84,10 @@ let opt_map_default f def = function
   | None -> def
   | Some x -> f x
 
+let opt_default def = function
+  | None -> def
+  | Some x -> x
+
 let rec zip lst1 lst2 = match lst1,lst2 with
   | [], _ -> []
   | _, [] -> []
@@ -101,6 +99,19 @@ let zipi xs ys =
 let map_pair f g (a,b) = (f a, g b)
 let map_fst f (a,b) = (f a, b)
 let map_snd g (a,b) = (a, g b)
+
+let range_with f a b =
+  if a > b then []
+  else
+    let rec loop j acc =
+      if a <= j then loop (j-1) (f j :: acc)
+      else acc
+    in
+    loop (b-1) []
+
+let range = range_with (fun x -> x)
+
+let repeat n a = range_with (fun _ -> a) 0 n
 
 (**
  * Useful for various places where a user might have typoed a string and the
@@ -173,3 +184,50 @@ let typo_suggestions =
       | _ -> 3
     in
     fst (List.fold_left (fold_results limit name) ([], max_int) possible_names)
+
+let typo_suggestion possible_names name =
+  let suggestions = typo_suggestions possible_names name in
+  try Some (List.hd suggestions)
+  with _ -> None
+
+(* util to limit the number of calls to a (usually recursive) function *)
+let count_calls ~counter ~default f =
+  (** Count number of calls to a function f, decrementing at each call and
+      returning default when count reaches 0. **)
+  if !counter = 0 then default
+  else begin
+    decr counter;
+    f ()
+  end
+
+let extension_of_filename filename =
+  try
+    let idx = String.rindex filename '.' in
+    Some (String.sub filename idx (String.length filename - idx))
+  with Not_found -> None
+
+(* ordinal of a number *)
+let ordinal = function
+  | 1 -> "1st"
+  | 2 -> "2nd"
+  | 3 -> "3rd"
+  | n -> spf "%dth" n
+
+
+(* Module implementing the recommended way to augment a map.
+
+   Without this API, we end up using the lower-level Map.union API. But
+   Map.union sometimes has unexpected results because the order of the two
+   arguments matters when there's overlap. (It's implemented as a Map.fold of
+   Map.add, which has the effect of adding the bindings in the first argument to
+   the second argument.)
+
+   Instead, Augmentable(Map).augment map ~with_bindings makes the intention
+   explicit, and is implemented by simply passing the arguments in the correct
+   order to Map.union.
+*)
+module Augmentable(M: MyMap.S) = struct
+  let augment map ~with_bindings = M.union with_bindings map
+end
+
+module AugmentableSMap = Augmentable(SMap)

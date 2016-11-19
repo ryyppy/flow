@@ -97,6 +97,7 @@ let message_of_string s =
 
 let internal_error_prefix = "Internal error (see logs): "
 
+(* for old error format. DEPRECATED *)
 let prepend_kind_message messages kind =
   match kind, messages with
   | _, BlameM ({Loc.source = Some Loc.LibFile _; _} as loc, _) :: _ ->
@@ -208,7 +209,8 @@ let format_reason_color
   let source = match loc.source with
   | Some LibFile filename
   | Some SourceFile filename
-  | Some JsonFile filename -> [file_clr, filename]
+  | Some JsonFile filename
+  | Some ResourceFile filename -> [file_clr, filename]
   | None | Some Builtins -> []
   in
   let loc_format =
@@ -238,19 +240,22 @@ let format_info info =
   let formatted = format_reason_color msg in
   String.concat "" (List.map snd formatted)
 
-let print_reason_color ~first ~one_line ~color (message: message) =
+let print_reason_color ?(out_channel=stdout) ~first ~one_line ~color (message: message) =
   let to_print = format_reason_color ~first ~one_line message in
   (if first then Printf.printf "\n");
-  Tty.cprint ~color_mode:color to_print
+  Tty.cprint ~color_mode:color ~out_channel to_print
 
-let print_error_color_old ~one_line ~color (e : error) =
+let print_error_color_old
+    ?(out_channel=stdout) ~one_line ~color ~strip_root ~root
+    (e : error) =
+  let e = if strip_root then strip_root_from_error root e else e in
   let { kind; messages; op; trace; extra } = e in
   let messages = prepend_kind_message messages kind in
   let messages = prepend_op_reason messages op in
   let messages = append_extra_info messages extra in
   let messages = append_trace_reasons messages trace in
-  print_reason_color ~first:true ~one_line ~color (List.hd messages);
-  List.iter (print_reason_color ~first:false ~one_line ~color) (List.tl messages)
+  print_reason_color ~out_channel ~first:true ~one_line ~color (List.hd messages);
+  List.iter (print_reason_color ~out_channel ~first:false ~one_line ~color) (List.tl messages)
 
 let file_location_style text = (Tty.Underline Tty.Default, text)
 let default_style text = (Tty.Normal Tty.Default, text)
@@ -340,10 +345,21 @@ let file_of_source source =
           end else filename in
         Some filename
     | Some Loc.SourceFile filename
-    | Some Loc.JsonFile filename ->
+    | Some Loc.JsonFile filename
+    | Some Loc.ResourceFile filename ->
         Some filename
     | Some Loc.Builtins -> None
     | None -> None
+
+let relative_lib_path ~strip_root ~root filename =
+  let sep = Filename.dir_sep in
+  let root_str = Printf.sprintf "%s%s" (Path.to_string root) sep in
+  if String_utils.string_starts_with filename root_str then
+    relative_path ~strip_root ~root filename
+  else if strip_root then
+    Printf.sprintf "<BUILTINS>%s%s" sep (Filename.basename filename)
+  else
+    filename
 
 let print_file_at_location ~strip_root ~root stdin_file main_file loc s = Loc.(
   let l0 = loc.start.line in
@@ -355,13 +371,17 @@ let print_file_at_location ~strip_root ~root stdin_file main_file loc s = Loc.(
   let see_another_file ~is_lib filename =
     if filename = main_file
     then [(default_style "")]
-    else [
-      comment_style (Printf.sprintf ". See%s: " (if is_lib then " lib" else ""));
-      comment_file_style (Printf.sprintf
-        "%s:%d"
-        (relative_path ~strip_root ~root filename)
-        l0)
-    ] in
+    else
+      let prefix = Printf.sprintf ". See%s: " (if is_lib then " lib" else "") in
+      let filename = if is_lib
+        then relative_lib_path ~strip_root ~root filename
+        else relative_path ~strip_root ~root filename
+      in
+      [
+        comment_style prefix;
+        comment_file_style (Printf.sprintf "%s:%d" filename l0)
+      ]
+  in
 
   let code_line = read_line_in_file ~root (l0 - 1) filename stdin_file in
 
@@ -377,7 +397,8 @@ let print_file_at_location ~strip_root ~root stdin_file main_file loc s = Loc.(
       | None, Some Loc.LibFile filename -> filename,true
       | Some filename, _
       | None, Some Loc.SourceFile filename
-      | None, Some Loc.JsonFile filename -> filename, false
+      | None, Some Loc.JsonFile filename
+      | None, Some Loc.ResourceFile filename -> filename, false
       | None, Some Loc.Builtins
       | None, None -> failwith "Should only have lib and source files at this point" in
       [comment_style s] @
@@ -471,14 +492,32 @@ let file_of_error err =
   let loc = loc_of_error err in
   file_of_source loc.Loc.source
 
-let print_error_header ~strip_root ~root message =
+let print_error_header ~strip_root ~root ~kind message =
   let loc, _ = to_pp message in
-  let filename = file_of_source loc.Loc.source in
-  let relfilename = match filename with
-  | Some fn -> relative_path ~strip_root ~root fn
-  | None -> "[No file]" in
-  [
-    file_location_style (Printf.sprintf "%s:%d" relfilename Loc.(loc.start.line));
+  let prefix, relfilename = match loc.Loc.source with
+    | Some Loc.LibFile filename ->
+      let header = match kind with
+      | ParseError -> "Library parse error:"
+      | InferError -> "Library type error:"
+      (* TODO: we don't publicly distinguish warnings vs errors right now *)
+      | InferWarning -> "Library type error:"
+      | InternalError -> internal_error_prefix
+      (* TODO: is this possible? What happens when there are two `declare
+         module`s with the same name? *)
+      | DuplicateProviderError -> "Library duplicate provider error:"
+      in
+      [comment_file_style (header^"\n")],
+      relative_lib_path ~strip_root ~root filename
+    | Some Loc.SourceFile filename
+    | Some Loc.JsonFile filename
+    | Some Loc.ResourceFile filename ->
+        [], relative_path ~strip_root ~root filename
+    | Some Loc.Builtins -> [], "[No file]"
+    | None -> [], "[No file]"
+  in
+  let file_loc = Printf.sprintf "%s:%d" relfilename Loc.(loc.start.line) in
+  prefix @ [
+    file_location_style file_loc;
     default_style "\n"
   ]
 
@@ -512,11 +551,10 @@ let remove_newlines (color, text) =
 let get_pretty_printed_error_new ~stdin_file:stdin_file ~strip_root ~one_line ~root
   (error : error) =
   let { kind; messages; op; trace; extra } = error in
-  let messages = prepend_kind_message messages kind in
   let messages = prepend_op_reason messages op in
   let messages = append_trace_reasons messages trace in
   let messages = merge_comments_into_blames messages in
-  let header = print_error_header ~strip_root ~root (List.hd messages) in
+  let header = print_error_header ~strip_root ~root ~kind (List.hd messages) in
   let main_file = match file_of_error error with
     | Some filename -> filename
     | None -> "[No file]" in
@@ -531,10 +569,10 @@ let get_pretty_printed_error_new ~stdin_file:stdin_file ~strip_root ~one_line ~r
     else to_print in
   (to_print @ [default_style "\n"])
 
-let print_error_color_new ~stdin_file:stdin_file ~strip_root ~one_line ~color ~root (error : error) =
+let print_error_color_new ?(out_channel=stdout) ~stdin_file:stdin_file ~strip_root ~one_line ~color ~root (error : error) =
   let to_print =
     get_pretty_printed_error_new ~stdin_file ~strip_root ~one_line ~root error in
-  Tty.cprint ~color_mode:color to_print
+  Tty.cprint ~out_channel ~color_mode:color to_print
 
 (* TODO: deprecate this in favor of Reason.json_of_loc *)
 let deprecated_json_props_of_loc loc = Loc.(
@@ -784,18 +822,23 @@ let json_of_errors errors =
 let json_of_errors_with_context ~root ~stdin_file errors =
   Hh_json.JSON_Array (List.map (json_of_error_with_context ~root ~stdin_file) errors)
 
-let print_error_json ~root ?(timing=None) ?(stdin_file=None) oc el =
+let print_error_json
+    ~strip_root ~root ?(pretty=false) ?(profiling=None) ?(stdin_file=None)
+    oc el =
   let open Hh_json in
+
+  let el = if strip_root then strip_root_from_errors root el else el in
+
   let props = [
     "flowVersion", JSON_String FlowConfig.version;
     "errors", json_of_errors_with_context ~root ~stdin_file el;
     "passed", JSON_Bool (el = []);
   ] in
-  let props = match timing with
+  let props = match profiling with
   | None -> props
-  | Some timing -> props @ [ "timing", Timing.to_json timing; ] in
+  | Some profiling -> props @ Profiling_js.to_json_properties profiling in
   let res = JSON_Object props in
-  output_string oc (json_to_string res);
+  output_string oc (json_to_string ~pretty res);
   flush oc
 
 (* for vim and emacs plugins *)
@@ -805,7 +848,8 @@ let string_of_loc_deprecated loc = Loc.(
     | Some Builtins -> ""
     | Some LibFile file
     | Some SourceFile file
-    | Some JsonFile file ->
+    | Some JsonFile file
+    | Some ResourceFile file ->
       let line = loc.start.line in
       let start = loc.start.column + 1 in
       let end_ = loc._end.column in
@@ -838,7 +882,8 @@ let print_error_deprecated =
     );
     Buffer.contents buf
   in
-  fun oc el ->
+  fun ~strip_root ~root oc el ->
+    let el = if strip_root then strip_root_from_errors root el else el in
     let sl = List.map to_string el in
     let sl = ListUtils.uniq (List.sort String.compare sl) in
     List.iter begin fun s ->
@@ -848,17 +893,19 @@ let print_error_deprecated =
     flush oc
 
 (* Human readable output *)
-let print_error_summary ~flags ?(stdin_file=None) ~strip_root ~root errors =
+let print_error_summary ?(out_channel=stdout) ~flags ?(stdin_file=None) ~strip_root ~root errors =
   let error_or_errors n = if n != 1 then "errors" else "error" in
   let truncate = not (flags.Options.show_all_errors) in
   let one_line = flags.Options.one_line in
   let color = flags.Options.color in
   let print_error_color = if flags.Options.old_output_format
-    then print_error_color_old
+    then print_error_color_old ~strip_root ~root
     else print_error_color_new ~stdin_file ~strip_root ~root
   in
   let print_error_if_not_truncated curr e =
-    (if not(truncate) || curr < 50 then print_error_color ~one_line ~color e);
+    if not(truncate) || curr < 50
+    then print_error_color ~one_line ~color ~out_channel e;
+
     curr + 1
   in
   let total =
@@ -866,9 +913,13 @@ let print_error_summary ~flags ?(stdin_file=None) ~strip_root ~root errors =
   in
   if total > 0 then print_newline ();
   if truncate && total > 50 then (
-    Printf.printf
+    Printf.fprintf
+      out_channel
       "... %d more %s (only 50 out of %d errors displayed)\n"
       (total - 50) (error_or_errors (total - 50)) total;
-    print_endline "To see all errors, re-run Flow with --show-all-errors"
+    Printf.fprintf
+      out_channel
+      "To see all errors, re-run Flow with --show-all-errors\n";
+    flush out_channel
   ) else
-    Printf.printf "Found %d %s\n" total (error_or_errors total)
+    Printf.fprintf out_channel "Found %d %s\n" total (error_or_errors total)

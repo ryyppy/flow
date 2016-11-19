@@ -1,6 +1,6 @@
 annot.js:4
   4: var bar: (str:number, i:number)=> string = foo;
-                   ^^^^^^ number. This type is incompatible with
+                   ^^^^^^ number. This type is incompatible with the expected param type of
   1: function foo(str:string, i:number):string {
                       ^^^^^^ string
 
@@ -46,9 +46,7 @@ annot.js:31
  30: function param_anno(n:number):void {
                            ^^^^^^ number
 
-annot.js:45
- 45:     batchRequests = batchRequests.map((request) => {
-                         ^ call of method `map`
+annot.js:37
  37:     batchRequests: Array<{method: string; path: string; params: ?Object}>,
                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ property `path`. Property not found in
  46:       return {

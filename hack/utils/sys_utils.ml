@@ -10,6 +10,8 @@
 
 open Core
 
+exception NotADirectory of string
+
 external realpath: string -> string option = "hh_realpath"
 external is_nfs: string -> bool = "hh_is_nfs"
 
@@ -76,14 +78,7 @@ let close_out_no_fail fn oc =
     Printf.fprintf stderr "Could not close: '%s' (%s)\n" fn e;
     exit 3
 
-let cat filename =
-  let ic = open_in_bin filename in
-  let len = in_channel_length ic in
-  let buf = Buffer.create len in
-  Buffer.add_channel buf ic len;
-  let content = Buffer.contents buf in
-  close_in ic;
-  content
+let cat = Disk.cat
 
 let cat_no_fail filename =
   let ic = open_in_bin_no_fail filename in
@@ -287,6 +282,14 @@ let try_touch ~follow_symlinks file =
     else lutimes file
   with _ ->
     ()
+
+let rec mkdir_p = function
+  | "" -> failwith "Unexpected empty directory, should never happen"
+  | d when not (Sys.file_exists d) ->
+    mkdir_p (Filename.dirname d);
+    Unix.mkdir d 0o770;
+  | d when Sys.is_directory d -> ()
+  | d -> raise (NotADirectory d)
 
 (* Emulate "mkdir -p", i.e., no error if already exists. *)
 let mkdir_no_fail dir =

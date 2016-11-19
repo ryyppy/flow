@@ -10,7 +10,7 @@ test.js:5
   5: <F foo={0} />; // error: number ~> string
      ^^^^^^^^^^^^^ React element `F`
   5: <F foo={0} />; // error: number ~> string
-             ^ number. This type is incompatible with
+             ^ number. This type is incompatible with the expected param type of
   3: function F(props: { foo: string }) {}
                               ^^^^^^ string
 
@@ -19,8 +19,6 @@ test.js:9
                                      ^^^^^^ identifier `numner`. Could not resolve name
 
 test.js:13
- 13: <Z />; // error, expected React component
-     ^^^^^ React element `Z`
  13: <Z />; // error, expected React component
      ^^^^^ React element `Z`. Expected React component instead of
  12: var Z = 0;

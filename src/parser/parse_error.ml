@@ -17,6 +17,7 @@ type t =
   | UnexpectedIdentifier
   | UnexpectedReserved
   | UnexpectedEOS
+  | UnexpectedVariance
   | UnexpectedTypeAlias
   | UnexpectedTypeAnnotation
   | UnexpectedTypeDeclaration
@@ -64,7 +65,6 @@ type t =
   | StrictFunctionStatement
   | AdjacentJSXElements
   | ParameterAfterRestParameter
-  | AsyncGenerator
   | DeclareAsync
   | DeclareExportLet
   | DeclareExportConst
@@ -79,6 +79,8 @@ type t =
   | WindowsFloatOfString
   | DuplicateDeclareModuleExports
   | AmbiguousDeclareModuleKind
+  | GetterArity
+  | SetterArity
 
 exception Error of (Loc.t * t) list
 
@@ -99,6 +101,7 @@ module PP =
       | UnexpectedIdentifier ->  "Unexpected identifier"
       | UnexpectedReserved ->  "Unexpected reserved word"
       | UnexpectedEOS ->  "Unexpected end of input"
+      | UnexpectedVariance -> "Unexpected variance sigil"
       | UnexpectedTypeAlias -> "Type aliases are not allowed in untyped mode"
       | UnexpectedTypeAnnotation -> "Type annotations are not allowed in untyped mode"
       | UnexpectedTypeDeclaration -> "Type declarations are not allowed in untyped mode"
@@ -152,7 +155,6 @@ module PP =
           "elements must be wrapped in an enclosing parent tag"
       | ParameterAfterRestParameter ->
           "Rest parameter must be final parameter of an argument list"
-      | AsyncGenerator -> "A function may not be both async and a generator"
       | DeclareAsync -> "async is an implementation detail and isn't necessary for your declare function statement. It is sufficient for your declare function to just have a Promise return type."
       | DeclareExportLet -> "`declare export let` is not supported. Use \
           `declare export var` instead."
@@ -184,4 +186,6 @@ module PP =
       | AmbiguousDeclareModuleKind -> "Found both `declare module.exports` and \
           `declare export` in the same module. Modules can only have 1 since \
           they are either an ES module xor they are a CommonJS module."
+      | GetterArity -> "Getter should have zero parameters"
+      | SetterArity -> "Setter should have exactly one parameter"
   end

@@ -21,7 +21,7 @@ val flow: Context.t -> (Type.t * Type.use_t) -> unit
 val flow_t: Context.t -> (Type.t * Type.t) -> unit
 
 (* given a use type, return a tvar constrained by the use type *)
-val tvar_with_constraint: Context.t -> Type.use_t -> Type.t
+val tvar_with_constraint: Context.t -> ?trace:Trace.t -> ?derivable:bool -> Type.use_t -> Type.t
 
 val unify: Context.t -> Type.t -> Type.t -> unit
 
@@ -52,39 +52,31 @@ val check_polarity: Context.t -> Type.polarity -> Type.t -> unit
 
 (* selectors *)
 
-val eval_selector: Context.t -> reason -> Type.t -> Type.TypeTerm.selector -> int -> Type.t
-
-(* property maps *)
-
-val mk_propmap : Context.t -> Type.t SMap.t -> int
-
-val has_prop : Context.t -> int -> SMap.key -> bool
-
-val read_prop : Context.t -> int -> SMap.key -> Type.t
-
-val write_prop : Context.t -> int -> SMap.key -> Type.t -> unit
-
-val iter_props : Context.t -> int -> (string -> Type.t -> unit) -> unit
-
 val visit_eval_id : Context.t -> int -> (Type.t -> unit) -> unit
 
 (* object/method types *)
 
-val mk_methodtype : ?frame:int -> Type.t -> Type.t list -> ?params_names:string list ->
+val mk_methodtype :
+  Type.t -> Type.t list ->
+  ?frame:int -> ?params_names:string list -> ?is_predicate:bool ->
   Type.t -> Type.funtype
 
-val mk_boundfunctiontype : ?frame:int -> Type.t list -> ?params_names:string list -> Type.t ->
-  Type.funtype
+val mk_boundfunctiontype :
+  Type.t list ->
+  ?frame:int -> ?params_names:string list -> ?is_predicate:bool ->
+  Type.t -> Type.funtype
 
-val mk_functiontype : ?frame:int -> Type.t list -> ?params_names:string list -> Type.t ->
-  Type.funtype
+val mk_functiontype :
+  Type.t list ->
+  ?frame:int -> ?params_names:string list -> ?is_predicate:bool ->
+  Type.t -> Type.funtype
 
 val dummy_this : Type.t
 val dummy_static : reason -> Type.t
 val dummy_prototype : Type.t
 
 val mk_objecttype : ?flags:Type.flags ->
-  Type.dicttype option -> int -> Type.t -> Type.objtype
+  Type.dicttype option -> Type.Properties.id -> Type.t -> Type.objtype
 
 val mk_object_with_proto : Context.t -> reason ->
   ?dict:Type.dicttype ->
@@ -92,7 +84,7 @@ val mk_object_with_proto : Context.t -> reason ->
 val mk_object_with_map_proto : Context.t -> reason ->
   ?sealed:bool ->
   ?frozen:bool ->
-  ?dict:Type.dicttype -> (Type.t SMap.t) -> Type.t -> Type.t
+  ?dict:Type.dicttype -> Type.Properties.t -> Type.t -> Type.t
 
 val mk_object: Context.t -> reason -> Type.t
 
@@ -115,13 +107,13 @@ val fresh_context: Context.metadata -> Loc.filename -> Modulename.t -> Context.t
 val builtins: Context.t -> Type.t
 val restore_builtins: Context.t -> Type.t -> unit
 val get_builtin: Context.t -> ?trace:Trace.t -> string -> reason -> Type.t
-val lookup_builtin: Context.t -> ?trace:Trace.t -> string -> reason -> reason option -> Type.t -> unit
+val lookup_builtin: Context.t -> ?trace:Trace.t -> string -> reason -> Type.lookup_kind -> Type.t -> unit
 val get_builtin_type: Context.t -> ?trace:Trace.t -> reason -> string -> Type.t
 val resolve_builtin_class: Context.t -> ?trace:Trace.t -> Type.t -> Type.t
 val set_builtin: Context.t -> ?trace:Trace.t -> string -> Type.t -> unit
 
 val mk_instance: Context.t -> ?trace:Trace.t -> reason -> ?for_type:bool -> Type.t -> Type.t
-val mk_typeof_annotation: Context.t -> ?trace:Trace.t -> Type.t -> Type.t
+val mk_typeof_annotation: Context.t -> ?trace:Trace.t -> reason -> Type.t -> Type.t
 
 (* strict *)
 val enforce_strict: Context.t -> Constraint.ident -> unit
@@ -133,6 +125,7 @@ val possible_types_of_type: Context.t -> Type.t -> Type.t list
 module Autocomplete : sig
   type member_result =
     | Success of Type.t SMap.t
+    | SuccessModule of Type.t SMap.t * (Type.t option)
     | FailureMaybeType
     | FailureAnyType
     | FailureUnhandledType of Type.t

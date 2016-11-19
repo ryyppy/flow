@@ -1,3 +1,13 @@
+(**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the "flow" directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ *)
+
 module Ast = Spider_monkey_ast
 module Anno = Type_annotation
 module Flow = Flow_js
@@ -9,6 +19,7 @@ type kind =
   | Ordinary
   | Async
   | Generator
+  | AsyncGenerator
   | FieldInit of Ast.Expression.t
   | Predicate
 
@@ -30,25 +41,39 @@ let return_loc =
   | {F.body = BodyBlock (loc, _); _} -> Loc.char_before loc
 
 let function_kind {Ast.Function.async; generator; predicate; _ } =
-  match async, generator, predicate with
-  | true, true, false -> Utils_js.assert_false "async && generator"
-  | true, false, false -> Async
-  | false, true, false -> Generator
-  | false, false, false -> Ordinary
-  | false, false, true -> Predicate
-  | _, _, true -> Utils_js.assert_false "(async || generator) && pred"
+  Ast.Type.Predicate.(match async, generator, predicate with
+  | true, true, None -> AsyncGenerator
+  | true, false, None -> Async
+  | false, true, None -> Generator
+  | false, false, None -> Ordinary
+  | false, false, Some (_, Declared _) -> Predicate
+  | false, false, Some (_ , Inferred) -> Predicate
+  | _, _, _ -> Utils_js.assert_false "(async || generator) && pred")
 
 let mk cx tparams_map ~expr reason func =
-  let {Ast.Function.typeParameters; returnType; body; _} = func in
+  let {Ast.Function.typeParameters; returnType; body; predicate; _} = func in
   let kind = function_kind func in
   let tparams, tparams_map =
     Anno.mk_type_param_declarations cx ~tparams_map typeParameters
   in
   let params = Func_params.mk cx tparams_map ~expr func in
   let return_t =
-    let reason = mk_reason "return" (return_loc func) in
+    let reason = mk_reason RReturn (return_loc func) in
     Anno.mk_type_annotation cx tparams_map reason returnType
   in
+  let return_t = Ast.Type.Predicate.(match predicate with
+    | None ->
+        return_t
+    | Some (_, Inferred) ->
+        (* Restrict the fresh condition type by the declared return type *)
+        let fresh_t = Anno.mk_type_annotation cx tparams_map reason None in
+        Flow.flow_t cx (fresh_t, return_t);
+        fresh_t
+    | Some (loc, Declared _) ->
+        Flow_error.(add_output cx
+          (EUnsupportedSyntax (loc, PredicateDeclarationForImplementation)));
+        Anno.mk_type_annotation cx tparams_map reason None
+  ) in
   {reason; kind; tparams; tparams_map; params; body; return_t}
 
 let empty_body =
@@ -58,7 +83,7 @@ let empty_body =
 
 let convert cx tparams_map loc func =
   let {Ast.Type.Function.typeParameters; returnType; _} = func in
-  let reason = mk_reason "function type" loc in
+  let reason = mk_reason RFunctionType loc in
   let kind = Ordinary in
   let tparams, tparams_map =
     Anno.mk_type_param_declarations cx ~tparams_map typeParameters
@@ -113,14 +138,14 @@ let generate_tests cx f x =
     return_t = Flow.subst cx map return_t;
   })
 
-let functiontype cx this_t {reason; tparams; params; return_t; _} =
+let functiontype cx this_t {reason; kind; tparams; params; return_t; _} =
   let static =
-    let reason = prefix_reason "statics of " reason in
+    let reason = replace_reason (fun desc -> RStatics desc) reason in
     let proto = FunProtoT reason in
     Flow.mk_object_with_proto cx reason proto
   in
   let prototype =
-    let reason = replace_reason "prototype" reason in
+    let reason = replace_reason_const RPrototype reason in
     Flow.mk_object cx reason
   in
   let funtype = { Type.
@@ -128,6 +153,7 @@ let functiontype cx this_t {reason; tparams; params; return_t; _} =
     params_tlist = Func_params.tlist params;
     params_names = Some (Func_params.names params);
     return_t;
+    is_predicate = kind = Predicate;
     closure_t = Env.peek_frame ();
     changeset = Env.retrieve_closure_changeset ()
   } in
@@ -160,15 +186,12 @@ let methodtype_DEPRECATED {reason; params; return_t; _} =
     Flow.mk_functiontype params_tlist ~params_names return_t ~frame
   )
 
-let gettertype x =
-  match methodtype x with
-  | FunT (_, _, _, { Type.return_t; _; }) -> return_t
-  | _ -> failwith "Getter property with unexpected type"
+let gettertype ({return_t; _}: t) = return_t
 
-let settertype x =
-  match methodtype x with
-  | FunT (_, _, _, { params_tlist = [param_t]; _; }) -> param_t
-  | _ ->  failwith "Setter property with unexpected type"
+let settertype {params; _} =
+  match Func_params.tlist params with
+  | [param_t] -> param_t
+  | _ -> failwith "Setter property with unexpected type"
 
 let toplevels id cx this super ~decls ~stmts ~expr
   {kind; tparams_map; params; body; return_t; _} =
@@ -178,7 +201,7 @@ let toplevels id cx this super ~decls ~stmts ~expr
       | BodyBlock (loc, _)
       | BodyExpression (loc, _) -> loc
     ) in
-    mk_reason "function body" loc
+    mk_reason RFunctionBody loc
   in
 
   let env =  Env.peek_env () in
@@ -196,6 +219,7 @@ let toplevels id cx this super ~decls ~stmts ~expr
       | Predicate -> Scope.Predicate
       | Async -> Scope.Async
       | Generator -> Scope.Generator
+      | AsyncGenerator -> Scope.AsyncGenerator
     in
     Scope.fresh ~var_scope_kind ()
   in
@@ -213,7 +237,7 @@ let toplevels id cx this super ~decls ~stmts ~expr
   (* add param bindings *)
   let const_params = Context.enable_const_params cx in
   params |> Func_params.iter Scope.(fun (name, t, loc) ->
-    let reason = mk_reason (Utils_js.spf "param `%s`" name) loc in
+    let reason = mk_reason (RParameter name) loc in
     (* add default value as lower bound, if provided *)
     Func_params.with_default name (fun default ->
       let default_t = Flow.mk_default cx reason default ~expr in
@@ -228,18 +252,18 @@ let toplevels id cx this super ~decls ~stmts ~expr
   );
 
   (* early-add our own name binding for recursive calls *)
-  Option.iter id ~f:(fun (loc, {Ast.Identifier.name; _}) ->
+  Option.iter id ~f:(fun (loc, name) ->
     let entry = Scope.Entry.new_var ~loc (AnyT.at loc) in
     Scope.add_entry name entry function_scope
   );
 
   let yield_t, next_t =
-    if kind = Generator then
-      Flow.mk_tvar cx (prefix_reason "yield of " reason),
-      Flow.mk_tvar cx (prefix_reason "next of " reason)
+    if kind = Generator || kind = AsyncGenerator then
+      Flow.mk_tvar cx (replace_reason_const (RCustom "yield") reason),
+      Flow.mk_tvar cx (replace_reason_const (RCustom "next") reason)
     else
-      MixedT (replace_reason "no yield" reason, Mixed_everything),
-      MixedT (replace_reason "no next" reason, Mixed_everything)
+      MixedT (replace_reason_const (RCustom "no yield") reason, Mixed_everything),
+      MixedT (replace_reason_const (RCustom "no next") reason, Mixed_everything)
   in
 
   let yield, next, return = Scope.(
@@ -268,14 +292,17 @@ let toplevels id cx this super ~decls ~stmts ~expr
   (* NOTE: Predicate functions can currently only be of the form:
        function f(...) { return <exp>; }
   *)
-  Ast.Statement.(if kind = Predicate then
-    match statements with
-    | [(_, Return { Return.argument = Some _})] -> ()
-    | _ ->
-        let loc = loc_of_reason reason in
-        let msg = "Invalid body for predicate function. \
-          Expected a simple return statement as body." in
-        Flow_error.add_error cx (loc, [msg])
+  Ast.Statement.(
+    match kind with
+    | Predicate -> begin
+        match statements with
+        | [(_, Return { Return.argument = Some _})] -> ()
+        | _ ->
+          let loc = loc_of_reason reason in
+          Flow_error.(add_output cx
+            (EUnsupportedSyntax (loc, PredicateInvalidBody)))
+      end
+    | _ -> ()
   );
 
   (* decl/type visit pre-pass *)
@@ -297,19 +324,27 @@ let toplevels id cx this super ~decls ~stmts ~expr
     | Ordinary ->
       FunImplicitReturn, VoidT.at loc
     | Async ->
-      let reason = mk_reason "Promise<void>" loc in
+      let reason = mk_reason (RCustom "Promise<void>") loc in
       let promise = Flow.get_builtin cx "Promise" reason in
       FunImplicitReturn, TypeAppT (promise, [VoidT.at loc])
     | Generator ->
-      let reason = mk_reason "return Generator<Yield,void,Next>" loc in
+      let reason = mk_reason (RCustom "Generator<Yield,void,Next>") loc in
       let return_t = VoidT.at loc in
       FunImplicitReturn,
       Flow.get_builtin_typeapp cx reason "Generator" [yield_t; return_t; next_t]
+    | AsyncGenerator ->
+      let reason = mk_reason (RCustom "AsyncGenerator<Yield,void,Next>") loc in
+      let return_t = VoidT.at loc in
+      FunImplicitReturn,
+      Flow.get_builtin_typeapp cx reason "AsyncGenerator" [yield_t; return_t; next_t]
     | FieldInit e ->
       let return_t = expr cx e in
       UnknownUse, return_t
     | Predicate ->
-      Utils_js.assert_false "Predicate functions need to return non-void"
+      let loc = loc_of_reason reason in
+      Flow_error.(add_output cx
+        (EUnsupportedSyntax (loc, PredicateVoidReturn)));
+      FunImplicitReturn, VoidT.at loc
     in
     Flow.flow cx (void_t, UseT (use_op, return_t))
   );

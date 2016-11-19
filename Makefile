@@ -49,14 +49,17 @@ MODULES=\
   src/server\
   src/services/autocomplete\
   src/services/inference\
+  src/services/flowFileGen\
   src/services/port\
   src/stubs\
+  src/third-party/lz4\
   src/typing\
   hack/dfind\
   hack/find\
   hack/globals\
   hack/heap\
   hack/hhi\
+  hack/injection/default_injector\
   hack/procs\
   hack/search\
   hack/socket\
@@ -65,6 +68,7 @@ MODULES=\
   hack/third-party/core\
   hack/utils\
   hack/utils/collections\
+  hack/utils/disk\
   hack/utils/hh_json\
   hack/$(INOTIFY)\
   hack/$(FSNOTIFY)
@@ -82,7 +86,8 @@ NATIVE_C_FILES=\
   hack/utils/priorities.c\
   hack/utils/win32_support.c\
   hack/hhi/hhi_win32res_stubs.c\
-  src/embedded/flowlib_elf.c
+  src/embedded/flowlib_elf.c\
+  $(wildcard src/third-party/lz4/*.c)
 
 OCAML_LIBRARIES=\
   unix\
@@ -104,23 +109,34 @@ FILES_TO_COPY=\
 JS_STUBS=\
 	$(wildcard js/*.js)
 
+# We need caml_hexstring_of_float for js_of_ocaml < 2.8
+JSOO_VERSION=$(shell which js_of_ocaml 2> /dev/null > /dev/null && js_of_ocaml --version)
+JSOO_MAJOR=$(shell echo $(JSOO_VERSION) | cut -d. -f 1)
+JSOO_MINOR=$(shell echo $(JSOO_VERSION) | cut -d. -f 2)
+ifeq (1, $(shell [ $(JSOO_MAJOR) -gt 2 ] || [ $(JSOO_MAJOR) -eq 2 -a $(JSOO_MINOR) -gt 7 ]; echo $$?))
+	JS_STUBS += js/optional/caml_hexstring_of_float.js
+endif
+
 ################################################################################
 #                                    Rules                                     #
 ################################################################################
 
-ALL_HEADER_FILES=$(addprefix _build/,$(shell find hack -name '*.h'))
+NATIVE_C_DIRS=$(patsubst %/,%,$(sort $(dir $(NATIVE_C_FILES))))
+ALL_HEADER_FILES=$(addprefix _build/,$(shell find $(NATIVE_C_DIRS) -name '*.h'))
 NATIVE_OBJECT_FILES=$(patsubst %.c,%.o,$(NATIVE_C_FILES))
 NATIVE_OBJECT_FILES+=hack/utils/get_build_id.gen.o
+BUILT_C_DIRS=$(addprefix _build/,$(NATIVE_C_DIRS))
 BUILT_C_FILES=$(addprefix _build/,$(NATIVE_C_FILES))
 BUILT_OBJECT_FILES=$(addprefix _build/,$(NATIVE_OBJECT_FILES))
 
-CC_FLAGS=
+CC_FLAGS=-DNO_SQLITE3
 CC_FLAGS += $(EXTRA_CC_FLAGS)
 CC_OPTS=$(foreach flag, $(CC_FLAGS), -ccopt $(flag))
 INCLUDE_OPTS=$(foreach dir,$(MODULES),-I $(dir))
 LIB_OPTS=$(foreach lib,$(OCAML_LIBRARIES),-lib $(lib))
 NATIVE_LIB_OPTS=$(foreach lib, $(NATIVE_LIBRARIES),-cclib -l -cclib $(lib))
-EXTRA_INCLUDE_OPTS=$(foreach dir, $(EXTRA_INCLUDE_PATHS),-ccopt -I -ccopt $(dir))
+ALL_INCLUDE_PATHS=$(sort $(realpath $(BUILT_C_DIRS))) $(EXTRA_INCLUDE_PATHS)
+EXTRA_INCLUDE_OPTS=$(foreach dir, $(ALL_INCLUDE_PATHS),-ccopt -I -ccopt $(dir))
 EXTRA_LIB_OPTS=$(foreach dir, $(EXTRA_LIB_PATHS),-cclib -L -cclib $(dir))
 FRAMEWORK_OPTS=$(foreach framework, $(FRAMEWORKS),-cclib -framework -cclib $(framework))
 
@@ -206,6 +222,8 @@ endif
 
 do-test:
 	./runtests.sh bin/flow
+	bin/flow check
+	./tool test
 
 test: build-flow copy-flow-files
 	${MAKE} do-test

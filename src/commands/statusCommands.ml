@@ -93,6 +93,7 @@ module Impl (CommandList : COMMAND_LIST) (Config : CONFIG) = struct
     root: Path.t;
     from: string;
     output_json: bool;
+    pretty: bool;
     error_flags: Options.error_flags;
     strip_root: bool;
   }
@@ -104,6 +105,9 @@ module Impl (CommandList : COMMAND_LIST) (Config : CONFIG) = struct
     ServerProt.cmd_to_channel oc (ServerProt.STATUS args.root);
     let response = ServerProt.response_from_channel ic in
     let strip_root = args.strip_root in
+    let print_json =
+      Errors.print_error_json ~strip_root ~root:args.root ~pretty:args.pretty
+    in
     match response with
     | ServerProt.DIRECTORY_MISMATCH d ->
       Printf.printf "%s is running on a different directory.\n" name;
@@ -114,23 +118,22 @@ module Impl (CommandList : COMMAND_LIST) (Config : CONFIG) = struct
       raise CommandExceptions.Server_directory_mismatch
     | ServerProt.ERRORS errors ->
       let error_flags = args.error_flags in
-      let errors = if strip_root
-        then Errors.strip_root_from_errors args.root errors
-        else errors
-      in
       begin if args.output_json then
-        Errors.print_error_json ~root:args.root stdout errors
+        print_json stdout errors
       else if args.from = "vim" || args.from = "emacs" then
-        Errors.print_error_deprecated stdout errors
+        Errors.print_error_deprecated ~strip_root ~root:args.root stdout errors
       else
         Errors.print_error_summary ~strip_root ~flags:error_flags ~root:args.root errors
       end;
       FlowExitStatus.(exit Type_error)
     | ServerProt.NO_ERRORS ->
       if args.output_json
-      then Errors.print_error_json ~root:args.root stdout []
+      then print_json stdout []
       else Printf.printf "No errors!\n%!";
       FlowExitStatus.(exit No_error)
+    | ServerProt.NOT_COVERED ->
+      let msg = "Why on earth did the server respond with NOT_COVERED?" in
+      FlowExitStatus.(exit ~msg Unknown_error)
     | ServerProt.PONG ->
       let msg = "Why on earth did the server respond with a pong?" in
       FlowExitStatus.(exit ~msg Unknown_error)
@@ -158,7 +161,7 @@ module Impl (CommandList : COMMAND_LIST) (Config : CONFIG) = struct
     end else
       FlowExitStatus.(exit ~msg:"Out of retries, exiting!" Out_of_retries)
 
-  let main server_flags json error_flags strip_root version root () =
+  let main server_flags json pretty error_flags strip_root version root () =
     if version then (
       prerr_endline "Warning: \
         `flow --version` is deprecated in favor of `flow version`";
@@ -173,10 +176,13 @@ module Impl (CommandList : COMMAND_LIST) (Config : CONFIG) = struct
     let flowconfig = FlowConfig.get (Server_files_js.config_file root) in
     let strip_root = strip_root || FlowConfig.(flowconfig.options.Opts.strip_root) in
 
+    let json = json || pretty in
+
     let args = {
       root;
       from = server_flags.CommandUtils.from;
       output_json = json;
+      pretty;
       error_flags;
       strip_root;
     } in

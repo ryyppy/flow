@@ -73,7 +73,8 @@ module.exports = {
         {
           content: 'x = { get width() { return m_width } }',
           explanation: "Esprima counts the whitespace before the implicit " +
-            "semicolon in its loc. Flow doesn't.",
+            "semicolon in its loc. Flow doesn't. Esprima-fb doesn't include " +
+            "the params in the FunctionExpression.",
           expected_differences: {
             'root.body.0.expression.right.properties.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
@@ -84,20 +85,136 @@ module.exports = {
               type: 'Wrong number',
               expected: 35,
               actual: 34
+            },
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
             },
           }
         },
-        'x = { get undef() {} }',
-        'x = { get if() {} }',
-        'x = { get true() {} }',
-        'x = { get false() {} }',
-        'x = { get null() {} }',
-        'x = { get "undef"() {} }',
-        'x = { get 10() {} }',
+        {
+          content: 'x = { get undef() {} }',
+          explanation: "Esprima-fb doesn't include the params in the FunctionExpression.",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+          }
+        },
+        {
+          content: 'x = { get if() {} }',
+          explanation: "Esprima-fb doesn't include the params in the FunctionExpression.",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 15,
+              actual: 12,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 15,
+              actual: 12,
+            },
+          },
+        },
+        {
+          content: 'x = { get true() {} }',
+          explanation: "Esprima-fb doesn't include the params in the FunctionExpression.",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 17,
+              actual: 14,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 17,
+              actual: 14,
+            },
+          },
+        },
+        {
+          content: 'x = { get false() {} }',
+          explanation: "Esprima-fb doesn't include the params in the FunctionExpression.",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+          },
+        },
+        {
+          content: 'x = { get null() {} }',
+          explanation: "Esprima-fb doesn't include the params in the FunctionExpression.",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 17,
+              actual: 14,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 17,
+              actual: 14,
+            },
+          },
+        },
+        {
+          content: 'x = { get "undef"() {} }',
+          explanation: "Esprima-fb doesn't include the params in the FunctionExpression.",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 20,
+              actual: 17,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 20,
+              actual: 17,
+            },
+          },
+        },
+        {
+          content: 'x = { get 10() {} }',
+          explanation: "Esprima-fb doesn't include the params in the FunctionExpression.",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 15,
+              actual: 12,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 15,
+              actual: 12,
+            },
+          },
+        },
         {
           content: 'x = { set width(w) { m_width = w } }',
           explanation: "Esprima counts the whitespace before the implicit " +
-            "semicolon in its loc. Flow doesn't.",
+            "semicolon in its loc. Flow doesn't. Esprima-fb doesn't include " +
+            "the params in the FunctionExpression.",
           expected_differences: {
             'root.body.0.expression.right.properties.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
@@ -108,13 +225,24 @@ module.exports = {
               type: 'Wrong number',
               expected: 33,
               actual: 32
+            },
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 19,
+              actual: 15,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 19,
+              actual: 15,
             },
           }
         },
         {
           content: 'x = { set if(w) { m_if = w } }',
           explanation: "Esprima counts the whitespace before the implicit " +
-            "semicolon in its loc. Flow doesn't.",
+            "semicolon in its loc. Flow doesn't. Esprima-fb doesn't include " +
+            "the params in the FunctionExpression.",
           expected_differences: {
             'root.body.0.expression.right.properties.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
@@ -125,13 +253,24 @@ module.exports = {
               type: 'Wrong number',
               expected: 27,
               actual: 26
+            },
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 16,
+              actual: 12,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 16,
+              actual: 12,
             },
           }
         },
         {
           content: 'x = { set true(w) { m_true = w } }',
           explanation: "Esprima counts the whitespace before the implicit " +
-            "semicolon in its loc. Flow doesn't.",
+            "semicolon in its loc. Flow doesn't. Esprima-fb doesn't include " +
+            "the params in the FunctionExpression.",
           expected_differences: {
             'root.body.0.expression.right.properties.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
@@ -142,13 +281,24 @@ module.exports = {
               type: 'Wrong number',
               expected: 31,
               actual: 30
+            },
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 14,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 14,
             },
           }
         },
         {
           content: 'x = { set false(w) { m_false = w } }',
           explanation: "Esprima counts the whitespace before the implicit " +
-            "semicolon in its loc. Flow doesn't.",
+            "semicolon in its loc. Flow doesn't. Esprima-fb doesn't include " +
+            "the params in the FunctionExpression.",
           expected_differences: {
             'root.body.0.expression.right.properties.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
@@ -159,13 +309,24 @@ module.exports = {
               type: 'Wrong number',
               expected: 33,
               actual: 32
+            },
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 19,
+              actual: 15,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 19,
+              actual: 15,
             },
           }
         },
         {
           content: 'x = { set null(w) { m_null = w } }',
           explanation: "Esprima counts the whitespace before the implicit " +
-            "semicolon in its loc. Flow doesn't.",
+            "semicolon in its loc. Flow doesn't. Esprima-fb doesn't include " +
+            "the params in the FunctionExpression.",
           expected_differences: {
             'root.body.0.expression.right.properties.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
@@ -176,13 +337,24 @@ module.exports = {
               type: 'Wrong number',
               expected: 31,
               actual: 30
+            },
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 14,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 14,
             },
           }
         },
         {
           content: 'x = { set "null"(w) { m_null = w } }',
           explanation: "Esprima counts the whitespace before the implicit " +
-            "semicolon in its loc. Flow doesn't.",
+            "semicolon in its loc. Flow doesn't. Esprima-fb doesn't include " +
+            "the params in the FunctionExpression.",
           expected_differences: {
             'root.body.0.expression.right.properties.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
@@ -193,13 +365,24 @@ module.exports = {
               type: 'Wrong number',
               expected: 33,
               actual: 32
+            },
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 20,
+              actual: 16,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 20,
+              actual: 16,
             },
           }
         },
         {
           content: 'x = { set 10(w) { m_null = w } }',
           explanation: "Esprima counts the whitespace before the implicit " +
-            "semicolon in its loc. Flow doesn't.",
+            "semicolon in its loc. Flow doesn't. Esprima-fb doesn't include " +
+            "the params in the FunctionExpression.",
           expected_differences: {
             'root.body.0.expression.right.properties.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
@@ -210,6 +393,16 @@ module.exports = {
               type: 'Wrong number',
               expected: 29,
               actual: 28
+            },
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 16,
+              actual: 12,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 16,
+              actual: 12,
             },
           }
         },
@@ -220,7 +413,8 @@ module.exports = {
         {
           content: 'x = { get width() { return m_width }, set width(width) { m_width = width; } }',
           explanation: "Esprima counts the whitespace before the implicit " +
-            "semicolon in its loc. Flow doesn't.",
+            "semicolon in its loc. Flow doesn't. Esprima-fb doesn't include " +
+            "the params in the FunctionExpression.",
           expected_differences: {
             'root.body.0.expression.right.properties.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
@@ -231,6 +425,26 @@ module.exports = {
               type: 'Wrong number',
               expected: 35,
               actual: 34
+            },
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+            'root.body.0.expression.right.properties.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 55,
+              actual: 47,
+            },
+            'root.body.0.expression.right.properties.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 55,
+              actual: 47,
             },
           }
         },
@@ -602,98 +816,8 @@ module.exports = {
             },
           }
         },
-        {
-          content: '/* header */ (function(){ var version = 1; }).call(this)',
-          explanation: "Esprima counts comments in its loc, Flow doesn't",
-          expected_differences: {
-            'root.body.0.expression.callee.loc.start.column': {
-              type: 'Wrong number',
-              expected: 13,
-              actual: 14
-            },
-            'root.body.0.expression.loc.start.column': {
-              type: 'Wrong number',
-              expected: 13,
-              actual: 14
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 13,
-              actual: 14
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 13,
-              actual: 14
-            },
-            'root.body.0.expression.callee.range.0': {
-              type: 'Wrong number',
-              expected: 13,
-              actual: 14
-            },
-            'root.body.0.expression.range.0': {
-              type: 'Wrong number',
-              expected: 13,
-              actual: 14
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 13,
-              actual: 14
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 13,
-              actual: 14
-            },
-          }
-        },
-        {
-          content: '(function(){ var version = 1; /* sync */ }).call(this)',
-          explanation: "Esprima counts comments in its loc, Flow doesn't",
-          expected_differences: {
-            'root.body.0.expression.callee.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.expression.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.expression.callee.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.expression.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-          }
-        },
+        '/* header */ (function(){ var version = 1; }).call(this)',
+        '(function(){ var version = 1; /* sync */ }).call(this)',
         'function f() { /* infinite */ while (true) { } /* bar */ var each; }',
         /* Hmm, let's not support this crazy syntax for now, since it's not in
          * an ecma spec yet. Syntax comes from
@@ -831,89 +955,10 @@ module.exports = {
         'new function() {}',
         "new window[(['Active'].concat('Object').join('X'))]('Microsoft.XMLHTTP');",
         'this.foo.export()',
-        {
-          content: '( new foo).bar()',
-          explanation: "Esprima counts the paren in its location, Flow doesn't",
-          expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 2
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 2
-            },
-            'root.body.0.expression.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 2
-            },
-            'root.body.0.expression.callee.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 2
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 2
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 2
-            },
-            'root.body.0.expression.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 2
-            },
-            'root.body.0.expression.callee.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 2
-            },
-          }
-        },
+        '( new foo).bar()',
         'foo(bar, baz)',
-        {
-          content: '(    foo  )()',
-          explanation: "Esprima counts the paren in its location, Flow doesn't",
-          expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 5
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 5
-            },
-            'root.body.0.expression.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 5
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 5
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 5
-            },
-            'root.body.0.expression.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 5
-            },
-          }
-        },
+        '(    foo  )()',
+        '(    foo  )[0]',
         'universe.milkyway',
         'universe.milkyway.solarsystem',
         'universe.milkyway.solarsystem.Earth',
@@ -1059,123 +1104,6 @@ module.exports = {
         'y ? 1 : 2',
         'x && y ? 1 : 2',
         'x = (0) ? 1 : 2',
-    ],
-
-    '[ES6] Arrow Function': [
-
-        '() => "test"',
-        'e => "test"',
-        '(e) => "test"',
-        '(a, b) => "test"',
-        'e => { 42; }',
-        'e => ({ property: 42 })',
-        // Not an object!
-        {
-          content: 'e => { label: 42 }',
-          explanation: "Esprima counts the whitespace before the } in its " +
-            "loc. Flow doesn't",
-          expected_differences: {
-            'root.body.0.expression.body.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 17,
-              actual: 16
-            },
-            'root.body.0.expression.body.body.0.body.loc.end.column': {
-              type: 'Wrong number',
-              expected: 17,
-              actual: 16
-            },
-            'root.body.0.expression.body.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 17,
-              actual: 16
-            },
-            'root.body.0.expression.body.body.0.body.range.1': {
-              type: 'Wrong number',
-              expected: 17,
-              actual: 16
-            },
-          }
-        },
-        '(a, b) => { 42; }',
-        '(x=1) => x * x',
-        // not strict mode, using eval
-        'eval => 42',
-        // not strict mode, using arguments
-        'arguments => 42',
-        // not strict mode, using octals
-        '(a) => 00',
-        // not strict mode, using eval, IsSimpleParameterList is true
-        '(eval, a) => 42',
-        // not strict mode, assigning to eval
-        '(eval = 10) => 42',
-        // not strict mode, using eval, IsSimpleParameterList is false
-        '(eval, a = 10) => 42',
-        {
-          content: '(x => x)',
-          explanation: "Esprima counts the parens in its loc. Flow doesn't",
-          expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 8,
-              actual: 7
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 8,
-              actual: 7
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 8,
-              actual: 7
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 8,
-              actual: 7
-            },
-          }
-        },
-        'x => y => 42',
-        '(x) => ((y, z) => (x, y, z))',
-        'foo(() => {})',
-        'foo((x, y) => {})',
-        '(sun) => earth',
-        // I don't see why this should be an error. 14.2.9
-        {
-          content: '(a, a) => 42',
-          explanation: "Esprima counts parens in its loc, Flow doesn't",
-          expected_differences: {
-            'root.errors': {
-              type: 'Flow found no error',
-              expected: 'Line 1: Strict mode function may not have duplicate parameter names',
-              actual: undefined
-            },
-          }
-        },
-        '([...a]) => 42',
-        '({...a}) => 42',
     ],
 
     'Assignment Operators': [
@@ -1365,52 +1293,7 @@ module.exports = {
     'If Statement': [
 
         'if (morning) goodMorning()',
-        {
-          content: 'if (morning) (function(){})',
-          explanation: "Esprima counts the parens in their loc, Flow doesn't",
-          expected_differences: {
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 27,
-              actual: 26
-            } ,
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 27,
-              actual: 26
-            } ,
-            'root.body.0.consequent.loc.start.column': {
-              type: 'Wrong number',
-              expected: 13,
-              actual: 14
-            } ,
-            'root.body.0.consequent.loc.end.column': {
-              type: 'Wrong number',
-              expected: 27,
-              actual: 26
-            } ,
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 27,
-              actual: 26
-            } ,
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 27,
-              actual: 26
-            } ,
-            'root.body.0.consequent.range.0': {
-              type: 'Wrong number',
-              expected: 13,
-              actual: 14
-            } ,
-            'root.body.0.consequent.range.1': {
-              type: 'Wrong number',
-              expected: 27,
-              actual: 26
-            } ,
-          }
-        },
+        'if (morning) (function(){})',
         'if (morning) var x = 0;',
         'if (morning) function a(){}',
         'if (morning) goodMorning(); else goodDay()',
@@ -1601,50 +1484,10 @@ module.exports = {
           explanation: "Esprima counts the parens and the whitespace before " +
             "an implicit semicolon in its loc. Flow doesn't",
           expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 22,
-              actual: 21
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 22,
-              actual: 21
-            },
             'root.body.0.expression.body.body.0.loc.end.column': {
               type: 'Wrong number',
               expected: 20,
               actual: 19
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 22,
-              actual: 21
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 22,
-              actual: 21
             },
             'root.body.0.expression.body.body.0.range.1': {
               type: 'Wrong number',
@@ -1653,147 +1496,17 @@ module.exports = {
             },
           }
         },
-        {
-          content: '(function(){ return; })',
-          explanation: "Esprima counts the parens in its loc. Flow doesn't",
-          expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-          }
-        },
-        {
-          content: '(function(){ return x; })',
-          explanation: "Esprima counts the parens in its loc. Flow doesn't",
-          expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 25,
-              actual: 24
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 25,
-              actual: 24
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 25,
-              actual: 24
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 25,
-              actual: 24
-            },
-          }
-        },
+        '(function(){ return; })',
+        '(function(){ return x; })',
         {
           content: '(function(){ return x * y })',
-          explanation: "Esprima counts the parens and the whitespace before " +
+          explanation: "Esprima counts the whitespace before " +
             "an implicit semicolon in its loc. Flow doesn't",
           expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 28,
-              actual: 27
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 28,
-              actual: 27
-            },
             'root.body.0.expression.body.body.0.loc.end.column': {
               type: 'Wrong number',
               expected: 26,
               actual: 25
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 28,
-              actual: 27
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 28,
-              actual: 27
             },
             'root.body.0.expression.body.body.0.range.1': {
               type: 'Wrong number',
@@ -1969,52 +1682,7 @@ module.exports = {
     ],
 
     'Function Expression': [
-      {
-        content: '(function(){}())',
-        explanation: "Esprima counts the outer parens in its loc. Flow doesn't",
-        expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 16,
-              actual: 15
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 16,
-              actual: 15
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 16,
-              actual: 15
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 16,
-              actual: 15
-            },
-        }
-      },
+      '(function(){}())',
       'var x = function(){}.bind(this)',
     ],
 
@@ -2024,52 +1692,7 @@ module.exports = {
         'function eval() { }',
         'function arguments() { }',
         'function test(t, t) { }',
-        {
-          content: '(function test(t, t) { })',
-          explanation: "Esprima counts the parens in the loc. Flow doesn't",
-          expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 25,
-              actual: 24
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 25,
-              actual: 24
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 25,
-              actual: 24
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 25,
-              actual: 24
-            },
-          }
-        },
+        '(function test(t, t) { })',
         {
           content: 'function eval() { function inner() { "use strict" } }',
           explanation: "Esprima counts the implict semicolon in the loc. " +
@@ -2125,52 +1748,7 @@ module.exports = {
             },
           }
         },
-        {
-          content: '(function(){})',
-          explanation: "Esprima counts the parens in the loc. Flow doesn't",
-          expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 14,
-              actual: 13
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 14,
-              actual: 13
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 14,
-              actual: 13
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 14,
-              actual: 13
-            },
-          }
-        },
+        '(function(){})',
         'function universe(__proto__) { }',
         'function test() { "use strict" + 42; }',
     ],
@@ -2226,165 +1804,9 @@ module.exports = {
         'while (true) { break\nthere; }',
         'while (true) { break // Comment\nthere; }',
         'while (true) { break /* Multiline\nComment */there; }',
-        {
-          content: '(function(){ return\nx; })',
-          explanation: "Esprima counts the parens and implicit semicolon in " +
-            "its loc. Flow doesn't",
-          expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 5,
-              actual: 4
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 5,
-              actual: 4
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 25,
-              actual: 24
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 25,
-              actual: 24
-            },
-          }
-        },
-        {
-          content: '(function(){ return // Comment\nx; })',
-          explanation: "Esprima counts the parens in its loc. Flow doesn't",
-          expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 5,
-              actual: 4
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 5,
-              actual: 4
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 5,
-              actual: 4
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 5,
-              actual: 4
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 36,
-              actual: 35
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 36,
-              actual: 35
-            },
-          }
-        },
-        {
-          content: '(function(){ return/* Multiline\nComment */x; })',
-          explanation: "Esprima counts the parens in its loc. Flow doesn't",
-          expected_differences: {
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 15,
-              actual: 14
-            },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 15,
-              actual: 14
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 47,
-              actual: 46
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 47,
-              actual: 46
-            },
-          }
-        },
+        '(function(){ return\nx; })',
+        '(function(){ return // Comment\nx; })',
+        '(function(){ return/* Multiline\nComment */x; })',
         '{ throw error\nerror; }',
         '{ throw error// Comment\nerror; }',
         '{ throw error/* Multiline\nComment */error; }',
@@ -2392,98 +1814,8 @@ module.exports = {
 
     'Directive Prolog': [
 
-        {
-          content: '(function () { \'use\\x20strict\'; with (i); }())',
-          explanation: "Esprima counts the outer parens in its loc. Flow doesn't",
-          expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 46,
-              actual: 45
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 46,
-              actual: 45
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 46,
-              actual: 45
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 46,
-              actual: 45
-            },
-          }
-        },
-        {
-          content: '(function () { \'use\\nstrict\'; with (i); }())',
-          explanation: "Esprima counts the outer parens in its loc. Flow doesn't",
-          expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 44,
-              actual: 43
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 44,
-              actual: 43
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 44,
-              actual: 43
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 44,
-              actual: 43
-            },
-          }
-        },
+        '(function () { \'use\\x20strict\'; with (i); }())',
+        '(function () { \'use\\nstrict\'; with (i); }())',
     ],
 
     'Whitespace': [
@@ -2688,16 +2020,91 @@ module.exports = {
         '{ get 2 }',
         '({ set: s(if) { } })',
         '({ set s(.) { } })',
-        '({ set s() { } })',
+        {
+          content: '({ set s() { } })',
+          explanation: "Esprima error isn't great",
+          expected_differences: {
+            'root.errors.0.column': {
+              type: 'Wrong error column',
+              expected: 9,
+              actual: '7-8'
+            },
+            'root.errors.0.message': {
+              type: 'Wrong error message',
+              expected: 'Unexpected token )',
+              actual: 'Setter should have exactly one parameter'
+            }
+          }
+        },
         '({ set: s() { } })',
         '({ set: s(a, b) { } })',
         '({ get: g(d) { } })',
-        '({ get i() { }, i: 42 })',
-        '({ i: 42, get i() { } })',
-        '({ set i(x) { }, i: 42 })',
-        '({ i: 42, set i(x) { } })',
-        '({ get i() { }, get i() { } })',
-        '({ set i(x) { }, set i(x) { } })',
+        {
+          content: '({ get i() { }, i: 42 })',
+          explanation: 'Esprima-fb is wrong, ES6 allows duplicates',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Object literal may not have data and accessor property with the same name',
+              actual: undefined,
+            }
+          }
+        },
+        {
+          content: '({ i: 42, get i() { } })',
+          explanation: 'Esprima-fb is wrong, ES6 allows duplicates',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Object literal may not have data and accessor property with the same name',
+              actual: undefined,
+            }
+          }
+        },
+        {
+          content: '({ set i(x) { }, i: 42 })',
+          explanation: 'Esprima-fb is wrong, ES6 allows duplicates',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Object literal may not have data and accessor property with the same name',
+              actual: undefined,
+            }
+          }
+        },
+        {
+          content: '({ i: 42, set i(x) { } })',
+          explanation: 'Esprima-fb is wrong, ES6 allows duplicates',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Object literal may not have data and accessor property with the same name',
+              actual: undefined,
+            }
+          }
+        },
+        {
+          content: '({ get i() { }, get i() { } })',
+          explanation: 'Esprima-fb is wrong, ES6 allows duplicates',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Object literal may not have multiple get/set accessors with the same name',
+              actual: undefined,
+            }
+          }
+        },
+        {
+          content: '({ set i(x) { }, set i(x) { } })',
+          explanation: 'Esprima-fb is wrong, ES6 allows duplicates',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Object literal may not have multiple get/set accessors with the same name',
+              actual: undefined,
+            }
+          }
+        },
         '((a)) => 42',
         '(a, (b)) => 42',
         {
@@ -3027,8 +2434,28 @@ module.exports = {
         },
         '(function () { \'use strict\'; delete i; }())',
         '(function () { \'use strict\'; with (i); }())',
-        'function hello() {\'use strict\'; ({ i: 42, i: 42 }) }',
-        'function hello() {\'use strict\'; ({ hasOwnProperty: 42, hasOwnProperty: 42 }) }',
+        {
+          content: 'function hello() {\'use strict\'; ({ i: 42, i: 42 }) }',
+          explanation: 'Esprima-fb is wrong, ES6 allows duplicates',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Duplicate data property in object literal not allowed in strict mode',
+              actual: undefined,
+            }
+          }
+        },
+        {
+          content: 'function hello() {\'use strict\'; ({ hasOwnProperty: 42, hasOwnProperty: 42 }) }',
+          explanation: 'Esprima-fb is wrong, ES6 allows duplicates',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Duplicate data property in object literal not allowed in strict mode',
+              actual: undefined,
+            }
+          }
+        },
         'function hello() {\'use strict\'; var eval = 10; }',
         'function hello() {\'use strict\'; var arguments = 10; }',
         'function hello() {\'use strict\'; try { } catch (eval) { } }',
@@ -3164,8 +2591,28 @@ module.exports = {
           }
         },
         '"use strict"; function t(__proto__, __proto__) { }',
-        '"use strict"; x = { __proto__: 42, __proto__: 43 }',
-        '"use strict"; x = { get __proto__() { }, __proto__: 43 }',
+        {
+          content: '"use strict"; x = { __proto__: 42, __proto__: 43 }',
+          explanation: 'Esprima-fb is wrong, ES6 allows duplicates',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Duplicate data property in object literal not allowed in strict mode',
+              actual: undefined,
+            }
+          }
+        },
+        {
+          content: '"use strict"; x = { get __proto__() { }, __proto__: 43 }',
+          explanation: 'Esprima-fb is wrong, ES6 allows duplicates',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Object literal may not have data and accessor property with the same name',
+              actual: undefined,
+            }
+          }
+        },
         'var',
         'let',
         'const',
@@ -3330,7 +2777,8 @@ module.exports = {
         '`Hello\rworld`',
         'new raw`42`',
         '`foo ${\n  "bar"\n} baz`',
-        '`foo ${/* a */ "bar" /* b */} baz`'
+        '`foo ${/* a */ "bar" /* b */} baz`',
+        '( foo)`bar`'
     ],
 
 
@@ -3408,67 +2856,117 @@ module.exports = {
         '(eval = 10) => 42',
         // not strict mode, using eval, IsSimpleParameterList is false
         '(eval, a = 10) => 42',
-        {
-          content: '(x => x)',
-          explanation: "Esprima counts the parens in its loc, Flow doesn't",
-          expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 8,
-              actual: 7
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 8,
-              actual: 7
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 8,
-              actual: 7
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 8,
-              actual: 7
-            },
-          }
-        },
+        '(x => x)',
         'x => y => 42',
         '(x) => ((y, z) => (x, y, z))',
         'foo(() => {})',
-        'foo((x, y) => {})'
+        'foo((x, y) => {})',
+        '(sun) => earth',
+        // I don't see why this should be an error. 14.2.9
+        {
+          content: '(a, a) => 42',
+          explanation: "Esprima counts parens in its loc, Flow doesn't",
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Strict mode function may not have duplicate parameter names',
+              actual: undefined
+            },
+          }
+        },
+        '([...a]) => 42',
+        '({...a}) => 42',
     ],
 
 
     // ECMAScript 6th Syntax, 13.13 Method Definitions
 
     'ES6: Method Definition': [
-        'x = { method() { } }',
-        'x = { method(test) { } }',
-        'x = { \'method\'() { } }',
-        'x = { get() { } }',
-        'x = { set() { } }',
+        {
+          content: 'x = { method() { } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 15,
+              actual: 12,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 15,
+              actual: 12,
+            },
+          },
+        },
+        {
+          content: 'x = { method(test) { } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 19,
+              actual: 12,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 19,
+              actual: 12,
+            },
+          },
+        },
+        {
+          content: 'x = { \'method\'() { } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 17,
+              actual: 14,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 17,
+              actual: 14,
+            },
+          },
+        },
+        {
+          content: 'x = { get() { } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 12,
+              actual: 9,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 12,
+              actual: 9,
+            },
+          },
+        },
+        {
+          content: 'x = { set() { } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 12,
+              actual: 9,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 12,
+              actual: 9,
+            },
+          },
+        },
     ],
 
     'Array Comprehension': [
@@ -3499,27 +2997,7 @@ module.exports = {
               expected: 0,
               actual: 1
             },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
             'root.body.0.expression.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.0': {
               type: 'Wrong number',
               expected: 0,
               actual: 1
@@ -3596,50 +3074,10 @@ module.exports = {
               expected: 24,
               actual: 23
             },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 26,
-              actual: 25
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 26,
-              actual: 25
-            },
             'root.body.0.expression.body.body.0.range.1': {
               type: 'Wrong number',
               expected: 24,
               actual: 23
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 26,
-              actual: 25
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 26,
-              actual: 25
             },
           }
         },
@@ -3653,50 +3091,10 @@ module.exports = {
               expected: 25,
               actual: 24
             },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 27,
-              actual: 26
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 27,
-              actual: 26
-            },
             'root.body.0.expression.body.body.0.range.1': {
               type: 'Wrong number',
               expected: 25,
               actual: 24
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 27,
-              actual: 26
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 27,
-              actual: 26
             },
           }
         },
@@ -3720,7 +3118,8 @@ module.exports = {
         {
           content: 'var x = { *test () { yield *v } };',
           explanation: "Esprima counts the implict semicolon in its loc, flow " +
-            "doesn't",
+            "doesn't. Esprima-fb doesn't include params in onExpression " +
+            "location",
           expected_differences: {
             'root.body.0.declarations.0.init.properties.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
@@ -3732,7 +3131,17 @@ module.exports = {
               expected: 30,
               actual: 29
             },
-          }
+            'root.body.0.declarations.0.init.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 19,
+              actual: 16,
+            },
+            'root.body.0.declarations.0.init.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 19,
+              actual: 16,
+            },
+          },
         },
         'function* t() {}',
         {
@@ -3745,50 +3154,10 @@ module.exports = {
               expected: 31,
               actual: 30
             },
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 33,
-              actual: 32
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 33,
-              actual: 32
-            },
             'root.body.0.expression.body.body.0.range.1': {
               type: 'Wrong number',
               expected: 31,
               actual: 30
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 33,
-              actual: 32
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 33,
-              actual: 32
             },
           }
         },
@@ -3833,122 +3202,582 @@ module.exports = {
         'var A = class extends B {}',
         'class type {}',
         'class A extends class B extends C {} {}',
-        'class A {get() {}}',
-        'class A { static get() {}}',
-        'class A extends B {get foo() {}}',
-        'class A extends B { static get foo() {}}',
-        'class A {set a(v) {}}',
-        'class A { static set a(v) {}}',
-        'class A {set(v) {};}',
-        'class A { static set(v) {};}',
-        'class A {*gen(v) { yield v; }}',
-        'class A { static *gen(v) { yield v; }}',
+        {
+          content: 'class A {get() {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 15,
+              actual: 12,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 15,
+              actual: 12,
+            },
+          },
+        },
+        {
+          content: 'class A { static get() {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 20,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 20,
+            },
+          },
+        },
+        {
+          content: 'class A extends B {get foo() {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 29,
+              actual: 26,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 29,
+              actual: 26,
+            },
+          },
+        },
+        {
+          content: 'class A extends B { static get foo() {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 37,
+              actual: 34,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 37,
+              actual: 34,
+            },
+          },
+        },
+        {
+          content: 'class A {set a(v) {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 14,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 14,
+            },
+          },
+        },
+        {
+          content: 'class A { static set a(v) {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 26,
+              actual: 22,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 26,
+              actual: 22,
+            },
+          },
+        },
+        {
+          content: 'class A {set(v) {};}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 16,
+              actual: 12,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 16,
+              actual: 12,
+            },
+          },
+        },
+        {
+          content: 'class A { static set(v) {};}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 24,
+              actual: 20,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 24,
+              actual: 20,
+            },
+          },
+        },
+        {
+          content: 'class A {*gen(v) { yield v; }}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 17,
+              actual: 13,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 17,
+              actual: 13,
+            },
+          },
+        },
+        {
+          content: 'class A { static *gen(v) { yield v; }}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 25,
+              actual: 21,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 25,
+              actual: 21,
+            },
+          },
+        },
         {
           content: '"use strict"; (class A {constructor() { super() }})',
-          explanation: "Esprima counts the parens and implicit semicolon in " +
-            "its loc, Flow doesn't",
+          explanation: "Esprima counts the implicit semicolon in its loc, " +
+            "Flow doesn't. Esprima-fb also doesn't include params in " +
+            "FunctionExpression location. It also mishandles `super`",
           expected_differences: {
             'root.body.1.expression.body.body.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
               expected: 48,
               actual: 47
             },
-            'root.body.1.loc.start.column': {
-              type: 'Wrong number',
-              expected: 14,
-              actual: 15
-            },
-            'root.body.1.loc.end.column': {
-              type: 'Wrong number',
-              expected: 51,
-              actual: 50
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 51,
-              actual: 50
-            },
             'root.body.1.expression.body.body.0.value.body.body.0.range.1': {
               type: 'Wrong number',
               expected: 48,
               actual: 47
             },
-            'root.body.1.range.0': {
+            'root.body.1.expression.body.body.0.value.range.0': {
               type: 'Wrong number',
-              expected: 14,
-              actual: 15
+              expected: 38,
+              actual: 35,
             },
-            'root.body.1.range.1': {
+            'root.body.1.expression.body.body.0.value.loc.start.column': {
               type: 'Wrong number',
-              expected: 51,
-              actual: 50
+              expected: 38,
+              actual: 35,
             },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 51,
-              actual: 50
-            }
+            'root.body.1.expression.body.body.0.value.body.body.0.expression.callee.type': {
+              type: 'Wrong string',
+              expected: 'Identifier',
+              actual: 'Super',
+            },
+            'root.body.1.expression.body.body.0.value.body.body.0.expression.callee.name': {
+              type: 'Missing property'
+            },
+            'root.body.1.expression.body.body.0.value.body.body.0.expression.callee.typeAnnotation': {
+              type: 'Missing property'
+            },
+            'root.body.1.expression.body.body.0.value.body.body.0.expression.callee.optional': {
+              type: 'Missing property'
+            },
           }
         },
-        'class A {static foo() {}}',
-        'class A {foo() {} static bar() {}}',
+        {
+          content: 'class A {static foo() {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+          },
+        },
+        {
+          content: 'class A {foo() {} static bar() {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 15,
+              actual: 12,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 15,
+              actual: 12,
+            },
+            'root.body.0.body.body.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 31,
+              actual: 28,
+            },
+            'root.body.0.body.body.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 31,
+              actual: 28,
+            },
+          },
+        },
         {
           content: '"use strict"; (class A { static constructor() { super() }})',
-          explanation: "Esprima counts the parens and implicit semicolon in " +
-            "its loc, Flow doesn't",
+          explanation: "Esprima counts the implicit semicolon in its loc, " +
+            "Flow doesn't. Esprima-fb also doesn't include params in " +
+            "FunctionExpression location. It also mishandles `super`",
           expected_differences: {
             'root.body.1.expression.body.body.0.value.body.body.0.loc.end.column': {
               type: 'Wrong number',
               expected: 56,
               actual: 55
             },
-            'root.body.1.loc.start.column': {
-              type: 'Wrong number',
-              expected: 14,
-              actual: 15
-            },
-            'root.body.1.loc.end.column': {
-              type: 'Wrong number',
-              expected: 59,
-              actual: 58
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 59,
-              actual: 58
-            },
             'root.body.1.expression.body.body.0.value.body.body.0.range.1': {
               type: 'Wrong number',
               expected: 56,
               actual: 55
             },
-            'root.body.1.range.0': {
+            'root.body.1.expression.body.body.0.value.range.0': {
               type: 'Wrong number',
-              expected: 14,
-              actual: 15
+              expected: 46,
+              actual: 43,
             },
-            'root.body.1.range.1': {
+            'root.body.1.expression.body.body.0.value.loc.start.column': {
               type: 'Wrong number',
-              expected: 59,
-              actual: 58
+              expected: 46,
+              actual: 43,
             },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 59,
-              actual: 58
+            'root.body.1.expression.body.body.0.value.body.body.0.expression.callee.type': {
+              type: 'Wrong string',
+              expected: 'Identifier',
+              actual: 'Super',
+            },
+            'root.body.1.expression.body.body.0.value.body.body.0.expression.callee.name': {
+              type: 'Missing property'
+            },
+            'root.body.1.expression.body.body.0.value.body.body.0.expression.callee.typeAnnotation': {
+              type: 'Missing property'
+            },
+            'root.body.1.expression.body.body.0.value.body.body.0.expression.callee.optional': {
+              type: 'Missing property'
             },
           }
         },
-        'class A { foo() {} bar() {}}',
-        'class A { get foo() {} set foo(v) {}}',
-        'class A { static get foo() {} get foo() {}}',
-        'class A { static get foo() {} static get bar() {} }',
-        'class A { static get foo() {} static set foo(v) {} get foo() {} set foo(v) {}}',
-        'class A { set foo(v) {} get foo() {} }',
-        'class A { [x]() {} }',
-        'class A { [1+1]() {} }',
-        'class A { get [1+1]() {} }',
-        'class A { static get [1+1]() {} }',
+        {
+          content: 'class A { foo() {} bar() {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 16,
+              actual: 13,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 16,
+              actual: 13,
+            },
+            'root.body.0.body.body.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 25,
+              actual: 22,
+            },
+            'root.body.0.body.body.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 25,
+              actual: 22,
+            },
+          },
+        },
+        {
+          content: 'class A { get foo() {} set foo(v) {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 20,
+              actual: 17,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 20,
+              actual: 17,
+            },
+            'root.body.0.body.body.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 34,
+              actual: 30,
+            },
+            'root.body.0.body.body.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 34,
+              actual: 30,
+            },
+          },
+        },
+        {
+          content: 'class A { static get foo() {} get foo() {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 27,
+              actual: 24,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 27,
+              actual: 24,
+            },
+            'root.body.0.body.body.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 40,
+              actual: 37,
+            },
+            'root.body.0.body.body.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 40,
+              actual: 37,
+            },
+          },
+        },
+        {
+          content: 'class A { static get foo() {} static get bar() {} }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 27,
+              actual: 24,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 27,
+              actual: 24,
+            },
+            'root.body.0.body.body.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 47,
+              actual: 44,
+            },
+            'root.body.0.body.body.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 47,
+              actual: 44,
+            },
+          },
+        },
+        {
+          content: 'class A { static get foo() {} static set foo(v) {} get foo() {} set foo(v) {}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 27,
+              actual: 24,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 27,
+              actual: 24,
+            },
+            'root.body.0.body.body.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 48,
+              actual: 44,
+            },
+            'root.body.0.body.body.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 48,
+              actual: 44,
+            },
+            'root.body.0.body.body.2.value.range.0': {
+              type: 'Wrong number',
+              expected: 61,
+              actual: 58,
+            },
+            'root.body.0.body.body.2.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 61,
+              actual: 58,
+            },
+            'root.body.0.body.body.3.value.range.0': {
+              type: 'Wrong number',
+              expected: 75,
+              actual: 71,
+            },
+            'root.body.0.body.body.3.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 75,
+              actual: 71,
+            },
+          },
+        },
+        {
+          content: 'class A { set foo(v) {} get foo() {} }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 21,
+              actual: 17,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 21,
+              actual: 17,
+            },
+            'root.body.0.body.body.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 34,
+              actual: 31,
+            },
+            'root.body.0.body.body.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 34,
+              actual: 31,
+            },
+          },
+        },
+        {
+          content: 'class A { [x]() {} }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 16,
+              actual: 13,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 16,
+              actual: 13,
+            },
+          },
+        },
+        {
+          content: 'class A { [1+1]() {} }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+          },
+        },
+        {
+          content: 'class A { get [1+1]() {} }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+          },
+        },
+        {
+          content: 'class A { static get [1+1]() {} }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 29,
+              actual: 26,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 29,
+              actual: 26,
+            },
+          },
+        },
+        {
+          content: 'class A { static() {} }',
+          explanation: 'Our version of esprima is outdated',
+          expected_differences: {
+            'root.errors': {
+              type: 'Flow found no error',
+              expected: 'Line 1: Unexpected token )',
+              actual: undefined,
+            },
+          },
+        },
+        {
+          content: 'class A { static static() {} }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 26,
+              actual: 23,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 26,
+              actual: 23,
+            },
+          },
+        },
     ],
 
     'Harmony: Invalid Class (strawman)': [
@@ -3961,480 +3790,136 @@ module.exports = {
     ],
 
     'ES6: Computed Properties': [
-        {
-          content: '({[x]: 10})',
-          explanation: "Esprima counts comments in its loc, Flow doesn't",
-          expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 11,
-              actual: 10
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 11,
-              actual: 10
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 11,
-              actual: 10
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 11,
-              actual: 10
-            },
-          }
-        },
-        {
-          content: '({["x" + "y"]: 10})',
-          explanation: "Esprima counts comments in its loc, Flow doesn't",
-          expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 19,
-              actual: 18
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 19,
-              actual: 18
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 19,
-              actual: 18
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 19,
-              actual: 18
-            },
-          }
-        },
-        {
-          content: '({[x]: function() {}})',
-          explanation: "Esprima counts comments in its loc, Flow doesn't",
-          expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 22,
-              actual: 21
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 22,
-              actual: 21
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 22,
-              actual: 21
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 22,
-              actual: 21
-            },
-          }
-        },
-        {
-          content: '({[x]: 10, y: 20})',
-          explanation: "Esprima counts comments in its loc, Flow doesn't",
-          expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 18,
-              actual: 17
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 18,
-              actual: 17
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 18,
-              actual: 17
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 18,
-              actual: 17
-            },
-          }
-        },
+        '({[x]: 10})',
+        '({["x" + "y"]: 10})',
+        '({[x]: function() {}})',
+        '({[x]: 10, y: 20})',
         {
           content: '({get [x]() {}, set [x](v) {}})',
-          explanation: "Esprima counts comments in its loc, Flow doesn't",
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
           expected_differences: {
-            'root.body.0.loc.start.column': {
+            'root.body.0.expression.properties.0.value.range.0': {
               type: 'Wrong number',
-              expected: 0,
-              actual: 1
+              expected: 12,
+              actual: 9,
             },
-            'root.body.0.loc.end.column': {
+            'root.body.0.expression.properties.0.value.loc.start.column': {
               type: 'Wrong number',
-              expected: 31,
-              actual: 30
+              expected: 12,
+              actual: 9,
             },
-            'root.loc.start.column': {
+            'root.body.0.expression.properties.1.value.range.0': {
               type: 'Wrong number',
-              expected: 0,
-              actual: 1
+              expected: 27,
+              actual: 23,
             },
-            'root.loc.end.column': {
+            'root.body.0.expression.properties.1.value.loc.start.column': {
               type: 'Wrong number',
-              expected: 31,
-              actual: 30
+              expected: 27,
+              actual: 23,
             },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 31,
-              actual: 30
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 31,
-              actual: 30
-            },
-          }
+          },
         },
         {
           content: '({[x]() {}})',
-          explanation: "Esprima counts comments in its loc, Flow doesn't",
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
           expected_differences: {
-            'root.body.0.loc.start.column': {
+            'root.body.0.expression.properties.0.value.range.0': {
               type: 'Wrong number',
-              expected: 0,
-              actual: 1
+              expected: 8,
+              actual: 5,
             },
-            'root.body.0.loc.end.column': {
+            'root.body.0.expression.properties.0.value.loc.start.column': {
               type: 'Wrong number',
-              expected: 12,
-              actual: 11
+              expected: 8,
+              actual: 5,
             },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 12,
-              actual: 11
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 12,
-              actual: 11
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 12,
-              actual: 11
-            },
-          }
+          },
         },
         // These tests fail due to computed Properties
         // 'var {[x]: y} = {y}',
         // 'function f({[x]: y}) {}',
-        'var x = {*[test]() { yield *v; }}',
+        {
+          content: 'var x = {*[test]() { yield *v; }}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.declarations.0.init.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 19,
+              actual: 16,
+            },
+            'root.body.0.declarations.0.init.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 19,
+              actual: 16,
+            },
+          },
+        },
     ],
 
     'ES6: Default parameters': [
         'function f([x] = [1]) {}',
         'function f({x} = {x: 10}) {}',
         'f = function({x} = {x: 10}) {}',
-        {
-          content: '({f: function({x} = {x: 10}) {}})',
-          explanation: "Esprima counts the parens in its loc, Flow doesn't",
-          expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 33,
-              actual: 32
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 33,
-              actual: 32
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 33,
-              actual: 32
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 33,
-              actual: 32
-            },
-          }
-        },
+        '({f: function({x} = {x: 10}) {}})',
         {
           content: '({f({x} = {x: 10}) {}})',
-          explanation: "Esprima counts the parens in its loc, Flow doesn't",
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
           expected_differences: {
-            'root.body.0.loc.start.column': {
+            'root.body.0.expression.properties.0.value.range.0': {
               type: 'Wrong number',
-              expected: 0,
-              actual: 1
+              expected: 19,
+              actual: 3,
             },
-            'root.body.0.range.0': {
+            'root.body.0.expression.properties.0.value.loc.start.column': {
               type: 'Wrong number',
-              expected: 0,
-              actual: 1
+              expected: 19,
+              actual: 3,
             },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-          }
+          },
         },
         {
           content: '(class {f({x} = {x: 10}) {}})',
-          explanation: "Esprima counts the parens in its loc, Flow doesn't",
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
           expected_differences: {
-            'root.body.0.loc.start.column': {
+            'root.body.0.expression.body.body.0.value.range.0': {
               type: 'Wrong number',
-              expected: 0,
-              actual: 1
+              expected: 25,
+              actual: 9,
             },
-            'root.body.0.range.0': {
+            'root.body.0.expression.body.body.0.value.loc.start.column': {
               type: 'Wrong number',
-              expected: 0,
-              actual: 1
+              expected: 25,
+              actual: 9,
             },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 29,
-              actual: 28
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 29,
-              actual: 28
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 29,
-              actual: 28
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 29,
-              actual: 28
-            },
-          }
+          },
         },
-        {
-          content: '(({x} = {x: 10}) => {})',
-          explanation: "Esprima counts the parens in its loc, Flow doesn't",
-          expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-          }
-        },
+        '(({x} = {x: 10}) => {})',
         'x = function(y = 1) {}',
         'function f(a = 1) {}',
         'x = { f: function(a=1) {} }',
-        'x = { f(a=1) {} }'
+        {
+          content: 'x = { f(a=1) {} }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 13,
+              actual: 7,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 13,
+              actual: 7,
+            },
+          },
+        },
     ],
 
     // ECMAScript 6th Syntax, 13 - Rest parameters
@@ -4487,7 +3972,28 @@ module.exports = {
         'new foo(...a)',
         'new foo(a, ...b)',
         'function foo(...a){}',
-        'function foo(a, ...a){}',
+        'function foo(a, ...b){}',
+        {
+          content: 'function foo(a, ...a){}',
+          explanation: "esprima-fb doesn't catch this",
+          expected_differences: {
+            'root.errors.0.message': {
+              type: 'Wrong error message',
+              expected: undefined,
+              actual: 'Strict mode function may not have duplicate parameter names',
+            },
+            'root.errors.0.line': {
+              type: 'Wrong error line',
+              expected: undefined,
+              actual: 1,
+            },
+            'root.errors.0.column': {
+              type: 'Wrong error column',
+              expected: undefined,
+              actual: 20,
+            },
+          }
+        }
     ],
 
     // https://gist.github.com/sebmarkbage/aa849c7973cb4452c547
@@ -4501,52 +4007,7 @@ module.exports = {
     'ES7 Proposal: Spread Properties': [
         'let z = {...x}',
         'z = {x, ...y}',
-        {
-          content: '({x, ...y, a, ...b, c})',
-          explanation: "Esprima counts the parens in the loc, Flow doesn't",
-          expected_differences: {
-            'root.body.0.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.body.0.loc.end.column': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.body.0.range.1': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.loc.start.column': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.range.0': {
-              type: 'Wrong number',
-              expected: 0,
-              actual: 1
-            },
-            'root.loc.end.column': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-            'root.range.1': {
-              type: 'Wrong number',
-              expected: 23,
-              actual: 22
-            },
-          }
-        },
+        '({x, ...y, a, ...b, c})',
     ],
 
     'Harmony Invalid syntax': [
@@ -4671,18 +4132,98 @@ module.exports = {
         'a = class Foo<T> { }',
         'a = class Foo<T> extends Bar<T> {}',
         'a=function<T,S>() {}',
-        'a={set fooProp(value:number){}}',
-        'class Array { concat(items:number | string) {}; }',
+        {
+          content: 'a={set fooProp(value:number){}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.expression.right.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 28,
+              actual: 14,
+            },
+            'root.body.0.expression.right.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 28,
+              actual: 14,
+            },
+          },
+        },
+        {
+          content: 'class Array { concat(items:number | string) {}; }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 44,
+              actual: 20,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 44,
+              actual: 20,
+            },
+          },
+        },
         'class Foo { [1 + 1]: string; }',
         'class Foo { 123:string; }',
-        'class Foo { "bar"<T>() { } }',
+        {
+          content: 'class Foo { "bar"<T>() { } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 17,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 17,
+            },
+          },
+        },
         'class Foo { "prop1":string; }',
         'class Foo { [prop1]: string; }' ,
         'class Foo { prop1:string; prop2:number; }',
         'class Foo { static prop1:string; prop2:number; }',
-        'class Foo {set fooProp(value:number){}}',
+        {
+          content: 'class Foo {set fooProp(value:number){}}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 36,
+              actual: 22,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 36,
+              actual: 22,
+            },
+          },
+        },
         'class Foo<T> {}',
-        'class Foo<T> { bar<U>():number { return 42; }}',
+        {
+          content: 'class Foo<T> { bar<U>():number { return 42; }}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 31,
+              actual: 18,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 31,
+              actual: 18,
+            },
+          },
+        },
         'class Foo<T> extends Bar<T> {}',
         'class Foo<T> extends mixin(Bar) {}',
         'function foo(): {} {}',
@@ -4796,29 +4337,261 @@ module.exports = {
     'Export': {
       'options': { sourceType: "module" },
       'tests': [
-        'export * from "foo";',
-        'export * from "foo"',
+        {
+          content: 'export * from "foo";',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportAllDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+            'root.body.0.declaration': {
+              type: 'Missing property',
+            },
+            'root.body.0.specifiers': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export * from "foo"',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportAllDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+            'root.body.0.declaration': {
+              type: 'Missing property',
+            },
+            'root.body.0.specifiers': {
+              type: 'Missing property',
+            },
+          },
+        },
         /* This should be supported...
         'export {} from "foo";',
         */
-        'export { bar } from "foo";',
-        'export { bar } from "foo"',
-        'export { bar, baz } from "foo";',
-        'export { bar };',
+        {
+          content: 'export { bar } from "foo";',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export { bar } from "foo"',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export { bar, baz } from "foo";',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export { bar };',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
         /* Esprima should support trailing comma
         'export { bar, }',
         */
-        'export { bar, baz };',
-        'export var x, y',
-        'export var y = 12',
-        'export let x, y',
-        'export let y = 12',
+        {
+          content: 'export { bar, baz };',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export var x, y',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export var y = 12',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export let x, y',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export let y = 12',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
         'export const x, y',
-        'export const y = 12',
-        'export function foo() {}',
-        'export class A {}',
-        'export default 1 + 1;',
-        'export default 1 + 1',
+        {
+          content: 'export const y = 12',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export function foo() {}',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export class A {}',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportNamedDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export default 1 + 1;',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportDefaultDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+            'root.body.0.specifiers': {
+              type: 'Missing property',
+            },
+            'root.body.0.source': {
+              type: 'Missing property',
+            },
+          },
+        },
+        {
+          content: 'export default 1 + 1',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportDefaultDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+            'root.body.0.specifiers': {
+              type: 'Missing property',
+            },
+            'root.body.0.source': {
+              type: 'Missing property',
+            },
+          },
+        },
         /* Esprima parses default exports wrong
         'export default function foo() {}',
         'export default function *foo() {}',
@@ -4834,7 +4607,31 @@ module.exports = {
         'export class {}',
         */
         'export function {}',
-        'export default function() {}',
+        {
+          content: 'export default function() {}',
+          explanation: 'esprima-fb is outdated',
+          expected_differences: {
+            'root.body.0.type': {
+              type: 'Wrong string',
+              expected: 'ExportDeclaration',
+              actual: 'ExportDefaultDeclaration',
+            },
+            'root.body.0.default': {
+              type: 'Missing property',
+            },
+            'root.body.0.specifiers': {
+              type: 'Missing property',
+            },
+            'root.body.0.source': {
+              type: 'Missing property',
+            },
+            'root.body.0.declaration.type': {
+              type: 'Wrong string',
+              expected: 'FunctionExpression',
+              actual: 'FunctionDeclaration',
+            },
+          },
+        },
         /* Esprima parses default exports wrong
         'export default class A {}',
         */
@@ -4942,7 +4739,6 @@ module.exports = {
       'declare class A { "static" foo(): number }',
       'declare class A { static : number }',
       'declare function foo();',
-      'declare function foo(x): void',
     ],
     'Declare Module': [
       'declare module A {}',
@@ -5023,145 +4819,10 @@ module.exports = {
       'var a: (A & B)',
     ],
     'Typecasts': [
-      {
-        content: '(xxx: number)',
-        explanation: 'Esprima counts the parens in its locs',
-        expected_differences: {
-          'root.body.0.range.0': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.body.0.range.1': {
-            type: 'Wrong number',
-            expected: 13,
-            actual: 12
-          },
-          'root.body.0.loc.start.column': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.body.0.loc.end.column': {
-            type: 'Wrong number',
-            expected: 13,
-            actual: 12
-          },
-          'root.range.0': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.range.1': {
-            type: 'Wrong number',
-            expected: 13,
-            actual: 12
-          },
-          'root.loc.start.column': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.loc.end.column': {
-            type: 'Wrong number',
-            expected: 13,
-            actual: 12
-          },
-        }
-      },
-      {
-        content: '({xxx: 0, yyy: "hey"}: {xxx: number; yyy: string})',
-        explanation:  'Esprima counts the parens in its locs',
-        expected_differences: {
-          'root.body.0.range.0': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.body.0.range.1': {
-            type: 'Wrong number',
-            expected: 50,
-            actual: 49
-          },
-          'root.body.0.loc.start.column': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.body.0.loc.end.column': {
-            type: 'Wrong number',
-            expected: 50,
-            actual: 49
-          },
-          'root.range.0': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.range.1': {
-            type: 'Wrong number',
-            expected: 50,
-            actual: 49
-          },
-          'root.loc.start.column': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.loc.end.column': {
-            type: 'Wrong number',
-            expected: 50,
-            actual: 49
-          },
-        }
-      },
+      '(xxx: number)',
+      '({xxx: 0, yyy: "hey"}: {xxx: number; yyy: string})',
       // distinguish between function type params and typecasts
-      {
-        content: '((xxx) => xxx + 1: (xxx: number) => number)',
-        explanation:  'Esprima counts the parens in its locs',
-        expected_differences: {
-          'root.body.0.range.0': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.body.0.range.1': {
-            type: 'Wrong number',
-            expected: 43,
-            actual: 42
-          },
-          'root.body.0.loc.start.column': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.body.0.loc.end.column': {
-            type: 'Wrong number',
-            expected: 43,
-            actual: 42
-          },
-          'root.range.0': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.range.1': {
-            type: 'Wrong number',
-            expected: 43,
-            actual: 42
-          },
-          'root.loc.start.column': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 1
-          },
-          'root.loc.end.column': {
-            type: 'Wrong number',
-            expected: 43,
-            actual: 42
-          },
-        }
-      },
+      '((xxx) => xxx + 1: (xxx: number) => number)',
       // parens disambiguate groups from casts
       {
         content: '((xxx: number), (yyy: string))',
@@ -5185,46 +4846,6 @@ module.exports = {
           'root.body.0.expression.loc.end.column': {
             type: 'Wrong number',
             expected: 29,
-            actual: 28
-          },
-          'root.body.0.range.0': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 2
-          },
-          'root.body.0.range.1': {
-            type: 'Wrong number',
-            expected: 30,
-            actual: 28
-          },
-          'root.body.0.loc.start.column': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 2
-          },
-          'root.body.0.loc.end.column': {
-            type: 'Wrong number',
-            expected: 30,
-            actual: 28
-          },
-          'root.range.0': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 2
-          },
-          'root.range.1': {
-            type: 'Wrong number',
-            expected: 30,
-            actual: 28
-          },
-          'root.loc.start.column': {
-            type: 'Wrong number',
-            expected: 0,
-            actual: 2
-          },
-          'root.loc.end.column': {
-            type: 'Wrong number',
-            expected: 30,
             actual: 28
           },
         }
@@ -5267,15 +4888,183 @@ module.exports = {
     'Async/Await': [
         'try { foo(); } catch (async) { bar(); }',
         'try { foo(); } catch (await) { bar(); }',
-        'var x = { async() { bar(); }}',
-        'var x = { set async(v) { }, get async() { return "foo";}, }',
-        'var x = { set await(v) { }, get await() { return "foo";}, }',
+        {
+          content: 'var x = { async() { bar(); }}',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.declarations.0.init.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+            'root.body.0.declarations.0.init.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 18,
+              actual: 15,
+            },
+          },
+        },
+        {
+          content: 'var x = { set async(v) { }, get async() { return "foo";}, }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.declarations.0.init.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 19,
+            },
+            'root.body.0.declarations.0.init.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 19,
+            },
+            'root.body.0.declarations.0.init.properties.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 40,
+              actual: 37,
+            },
+            'root.body.0.declarations.0.init.properties.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 40,
+              actual: 37,
+            },
+          },
+        },
+        {
+          content: 'var x = { set await(v) { }, get await() { return "foo";}, }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.declarations.0.init.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 19,
+            },
+            'root.body.0.declarations.0.init.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 19,
+            },
+            'root.body.0.declarations.0.init.properties.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 40,
+              actual: 37,
+            },
+            'root.body.0.declarations.0.init.properties.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 40,
+              actual: 37,
+            },
+          },
+        },
         'class async { }',
-        'class async { async() { } }',
-        'class async { async async() { await foo; } }',
-        'class await { await() { } }',
-        'class A { set async(v) { } get async() { return "foo";} }',
-        'class A { set await(v) { } get await() { return "foo";} }',
+        {
+          content: 'class async { async() { } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+          },
+        },
+        {
+          content: 'class async { async async() { await foo; } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 28,
+              actual: 25,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 28,
+              actual: 25,
+            },
+          },
+        },
+        {
+          content: 'class await { await() { } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+          },
+        },
+        {
+          content: 'class A { set async(v) { } get async() { return "foo";} }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 19,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 19,
+            },
+            'root.body.0.body.body.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 39,
+              actual: 36,
+            },
+            'root.body.0.body.body.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 39,
+              actual: 36,
+            },
+          },
+        },
+        {
+          content: 'class A { set await(v) { } get await() { return "foo";} }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 19,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 23,
+              actual: 19,
+            },
+            'root.body.0.body.body.1.value.range.0': {
+              type: 'Wrong number',
+              expected: 39,
+              actual: 36,
+            },
+            'root.body.0.body.body.1.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 39,
+              actual: 36,
+            },
+          },
+        },
         {
           content: 'y = async function() { return await bar; } ()',
           explanation: 'Babel has no problem with this, and it seems ' +
@@ -5290,7 +5079,23 @@ module.exports = {
         },
         'async function f() { return 1; }',
         'async function foo() { await 1; }',
-        'var x = { async m() { await 1; } };',
+        {
+          content: 'var x = { async m() { await 1; } };',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.declarations.0.init.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 20,
+              actual: 17,
+            },
+            'root.body.0.declarations.0.init.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 20,
+              actual: 17,
+            },
+          },
+        },
         'function async() { }',
         'async function foo() { return function await() { }; }',
         {
@@ -5311,7 +5116,57 @@ module.exports = {
         'var x = async a => await a;',
         'foo(async () => await bar);',
         'var x = async\ny => y',
-        'class A { async bar() { await foo; } }',
+        {
+          content: 'class A { async bar() { await foo; } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.body.body.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+            'root.body.0.body.body.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+          },
+        },
+        {
+          content: 'var x = { async "foo"() { await y; } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.declarations.0.init.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 24,
+              actual: 21,
+            },
+            'root.body.0.declarations.0.init.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 24,
+              actual: 21,
+            },
+          },
+        },
+        {
+          content: 'var x = { async 123() { await y; } }',
+          explanation: "Esprima-fb doesn't include params in " +
+            "FunctionExpression location",
+          expected_differences: {
+            'root.body.0.declarations.0.init.properties.0.value.range.0': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+            'root.body.0.declarations.0.init.properties.0.value.loc.start.column': {
+              type: 'Wrong number',
+              expected: 22,
+              actual: 19,
+            },
+          },
+        },
     ],
   }
 };

@@ -19,24 +19,23 @@ gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB8
 \curl -sSL https://get.rvm.io | bash -s stable --ruby=2.2
 ```
 
-### Install Jekyll and its dependencies
+### Serve the Site
 
 ```
 # from this directory (website/)
-gem install bundler
-bundle install
+make serve
 ```
 
-### Run Jekyll
+This will fire up a web server at http://localhost:4000 by default. To access it from other machines, add `--host ::` (all interfaces, including IPv6).
+
+To automatically rebuild the site by watching the filesystem for changes, run:
 
 ```
-jekyll serve -w
+make watch
 ```
 
-This will fire up a web server at http://localhost:8000 by default. To access it from other machines, add `--host ::` (all interfaces, including IPv6).
-
-The `-w` flag watches the filesystem for changes, so pages will rebuild on save. It takes a few seconds, but just refresh the page to see changes.
+It takes a few seconds, but just refresh the page to see changes.
 
 ## Publishing the Website
 
-On each commit, [Travis](https://travis-ci.org/facebook/flow) builds the site and then pushes the results to the [`gh-pages`](https://github.com/facebook/flow/tree/gh-pages) branch. Then [GitHub Pages](https://pages.github.com/) deploys the changes to http://flowtype.org.
+On each commit, [Travis](https://travis-ci.org/facebook/flow) builds the site and then [pushes the results to S3](https://github.com/facebook/flow/blob/master/resources/travis/deploy.sh).

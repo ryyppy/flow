@@ -50,15 +50,42 @@ let parenthesize t_str enclosure triggers =
 (* general-purpose type printer. not the cleanest visitor in the world,
    but reasonably general. override gets a chance to print the incoming
    type first. if it passes, the bulk of printable types are formatted
-   in a reasonable way. fallback is sent the rest. enclosure drives
-   delimiter choice. see e.g. string_of_t for callers.
+   in a reasonable way. enclosure drives delimiter choice. see e.g.
+   string_of_t for callers.
  *)
-let rec type_printer override fallback enclosure cx t =
-  let pp = type_printer override fallback in
+let rec type_printer_impl ~size override enclosure cx t =
+  let pp = type_printer ~size override in
+
+  let rec prop x = function
+    | Field (t, polarity) -> spf "%s%s: %s"
+      (Polarity.sigil polarity)
+      (prop_name cx x t)
+      (pp EnclosureProp cx t)
+    | Get t -> spf "get %s(): %s" x (pp EnclosureRet cx t)
+    | Set t -> spf "set %s(value: %s): void" x (pp EnclosureParam cx t)
+    | GetSet (t1, t2) ->
+      String.concat ", " [
+        prop x (Get t1);
+        prop x (Set t2);
+      ]
+  in
+
   match override cx t with
   | Some s -> s
   | None ->
     match t with
+    | OpenT (_, id) ->
+        spf "TYPE_%d" id
+
+    | NumT _
+    | StrT _
+    | BoolT _
+    | EmptyT _
+    | MixedT _
+    | AnyT _
+    | NullT _ ->
+        string_of_desc (desc_of_reason (reason_of_t t))
+
     | BoundT typeparam -> typeparam.name
 
     | SingletonStrT (_, s) -> spf "'%s'" s
@@ -85,18 +112,16 @@ let rec type_printer override fallback enclosure cx t =
 
     | ObjT (_, {props_tmap = flds; dict_t; _}) ->
         let props =
-          Context.property_maps cx
-          |> IMap.find_unsafe flds
+          Context.find_props cx flds
           |> SMap.elements
           |> List.filter (fun (x,_) -> not (Reason.is_internal_name x))
           |> List.rev
-          |> List.map (fun (x,t) ->
-               (prop_name cx x t) ^ ": " ^ (pp EnclosureProp cx t))
+          |> List.map (fun (x, p) -> prop x p)
           |> String.concat ", "
         in
         let indexer =
           (match dict_t with
-          | Some { dict_name; key; value } ->
+          | Some { dict_name; key; value; dict_polarity } ->
               let indexer_prefix =
                 if props <> ""
                 then ", "
@@ -106,8 +131,9 @@ let rec type_printer override fallback enclosure cx t =
                 | None -> "_"
                 | Some name -> name
               in
-              (spf "%s[%s: %s]: %s,"
+              (spf "%s%s[%s: %s]: %s,"
                 indexer_prefix
+                (Polarity.sigil dict_polarity)
                 dict_name
                 (pp EnclosureNone cx key)
                 (pp EnclosureNone cx value)
@@ -132,7 +158,7 @@ let rec type_printer override fallback enclosure cx t =
     | TypeAppT (c,ts) ->
         let type_s =
           spf "%s<%s>"
-            (instance_of_poly_type_printer override fallback EnclosureAppT cx c)
+            (instance_of_poly_type_printer ~size override EnclosureAppT cx c)
             (ts
               |> List.map (pp EnclosureNone cx)
               |> String.concat ", "
@@ -215,8 +241,19 @@ let rec type_printer override fallback enclosure cx t =
     | ThisClassT _ ->
         "This"
 
-    | DepPredT _ ->
-        spf "Dependent predicate"
+    | OpenPredT (_, t, m_pos, m_neg) ->
+        let l_pos = Key_map.elements m_pos in
+        let l_neg = Key_map.elements m_neg in
+        let str_of_pair (k,p) = spf "%s -> %s"
+          (Key.string_of_key k) (string_of_predicate p) in
+        spf "$OpenPred (%s) [+: %s] [-: %s]" (pp EnclosureNone cx t)
+          (l_pos |> List.map str_of_pair |> String.concat ", ")
+          (l_neg |> List.map str_of_pair |> String.concat ", ")
+
+    | ExistsT _ ->
+        "*"
+
+    (* TODO: Fix these *)
 
     | FunProtoT _ ->
         "function proto"
@@ -230,7 +267,6 @@ let rec type_printer override fallback enclosure cx t =
     | FunProtoApplyT _ ->
         "FunctionProtoApply"
 
-    (* TODO: Fix these *)
     | EvalT _ ->
         "Eval"
 
@@ -240,50 +276,55 @@ let rec type_printer override fallback enclosure cx t =
     | ModuleT _ ->
         "Module"
 
-    | t ->
-        fallback t
+    | ChoiceKitT _ ->
+        "ChoiceKit"
 
-and instance_of_poly_type_printer override fallback enclosure cx = function
+    | FunProtoCallT _
+    | ObjProtoT _
+    | AbstractT _
+    | ExactT (_, _)
+    | DiffT (_, _)
+    | ExtendsT (_, _, _)
+    | TypeMapT (_, _, _, _) ->
+        assert_false (spf "Missing printer for %s" (string_of_ctor t))
+
+and instance_of_poly_type_printer ~size override enclosure cx = function
   | PolyT (_, ThisClassT t)
   | PolyT (_, ClassT t)
-    -> type_printer override fallback enclosure cx t
+    -> type_printer ~size override enclosure cx t
 
   | PolyT (_, TypeT (reason, _))
     -> DescFormat.name_of_type_reason reason
 
   (* NOTE: t = FunT is legit, others probably mean upstream errors *)
   | PolyT (_, t)
-    -> type_printer override fallback enclosure cx t
+    -> type_printer ~size override enclosure cx t
 
   (* since we're called with args that aren't statically guaranteed
      to be `PolyT`s, fall back here instead of blowing up *)
   | t
-    -> type_printer override fallback enclosure cx t
+    -> type_printer ~size override enclosure cx t
+
+and type_printer ~size override enclosure cx t =
+  count_calls ~counter:size ~default:"..." (fun () ->
+    type_printer_impl ~size override enclosure cx t
+  )
 
 (* pretty printer *)
 let string_of_t_ =
-  let override _cx t = match t with
-    | OpenT (_, id) -> Some (spf "TYPE_%d" id)
-    | NumT _
-    | StrT _
-    | BoolT _
-    | EmptyT _
-    | MixedT _
-    | AnyT _
-    | NullT _ -> Some (desc_of_reason (reason_of_t t))
-    | _ -> None
-  in
-  let fallback t =
-    assert_false (spf "Missing printer for %s" (string_of_ctor t))
-  in
-  fun enclosure cx t ->
-    type_printer override fallback enclosure cx t
+  let override _cx _t = None in
+  fun ?(size=5000) enclosure cx t ->
+    type_printer ~size:(ref size) override enclosure cx t
 
-let string_of_t =
-  string_of_t_ EnclosureNone
+let string_of_t ?size cx t =
+  string_of_t_ ?size EnclosureNone cx t
 
 let string_of_param_t =
   string_of_t_ EnclosureParam
+
+(* for debugging *)
+let type_printer ?(size=5000) override enclosure cx t =
+  type_printer ~size:(ref size) override enclosure cx t
 
 let rec is_printed_type_parsable_impl weak cx enclosure = function
   (* Base cases *)
@@ -345,13 +386,14 @@ let rec is_printed_type_parsable_impl weak cx enclosure = function
             (is_printed_type_parsable_impl weak cx EnclosureNone value)
         | None -> true
       in
-      let prop_map = IMap.find_unsafe props_tmap (Context.property_maps cx) in
-      SMap.fold (fun name t acc ->
+      let prop_map = Context.find_props cx props_tmap in
+      SMap.fold (fun name p acc ->
           acc && (
             (* We don't print internal properties, thus we do not care whether
                their type is printable or not *)
             (Reason.is_internal_name name) ||
-            (is_printed_type_parsable_impl weak cx EnclosureNone t)
+            (p |> Type.Property.forall_t
+              (is_printed_type_parsable_impl weak cx EnclosureNone))
           )
         ) prop_map is_printable
 
@@ -402,6 +444,9 @@ let rec is_printed_type_parsable_impl weak cx enclosure = function
     when weak
     ->
       is_printed_type_parsable_impl weak cx EnclosureNone t
+
+  | OpenPredT (_, t, _, _) ->
+    is_printed_type_parsable_impl weak cx EnclosureNone t
 
   | _
     ->

@@ -21,6 +21,8 @@ val clone_env: t -> t
 
 val string_of_env: Context.t -> t -> string
 
+val var_scope_kind: unit -> Scope.var_scope_kind
+
 val in_async_scope: unit -> bool
 val in_generator_scope: unit -> bool
 val in_predicate_scope: unit -> bool
@@ -66,6 +68,8 @@ val bind_implicit_const: ?state:State.t -> Entry.const_binding_kind ->
 
 val bind_const: ?state:State.t -> Context.t -> string -> Type.t ->
   reason -> unit
+
+val bind_import: Context.t -> string -> Type.t -> reason -> unit
 
 val bind_type: ?state:State.t -> Context.t -> string -> Type.t ->
   reason -> unit

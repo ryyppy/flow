@@ -50,7 +50,8 @@ end with type t = Impl.t) = struct
     let source = match Loc.source location with
     | Some Loc.LibFile src
     | Some Loc.SourceFile src
-    | Some Loc.JsonFile src -> string src
+    | Some Loc.JsonFile src
+    | Some Loc.ResourceFile src -> string src
     | Some Loc.Builtins -> string "(global)"
     | None -> null
     in
@@ -128,7 +129,6 @@ end with type t = Impl.t) = struct
       node "SwitchStatement" loc [|
         "discriminant", expression switch.discriminant;
         "cases", array_of_list case switch.cases;
-        "lexical", bool switch.lexical;
       |]
     )
   | loc, Return return ->
@@ -143,7 +143,6 @@ end with type t = Impl.t) = struct
       node "TryStatement" loc [|
         "block", block _try.block;
         "handler", option catch _try.handler;
-        "guardedHandlers", array_of_list catch _try.guardedHandlers;
         "finalizer", option block _try.finalizer;
       |]
     )
@@ -183,51 +182,25 @@ end with type t = Impl.t) = struct
       |]
     )
   | loc, ForOf forof -> ForOf.(
+      let type_ =
+        if forof.async
+        then "ForAwaitStatement"
+        else "ForOfStatement"
+      in
       let left = (match forof.left with
       | LeftDeclaration left -> variable_declaration left
       | LeftExpression left -> expression left) in
-      node "ForOfStatement" loc [|
+      node type_ loc [|
         "left", left;
         "right", expression forof.right;
         "body", statement forof.body;
-      |]
-    )
-  | loc, Let _let -> Let.(
-      node "LetStatement" loc [|
-        "head", array_of_list let_assignment _let.head;
-        "body", statement _let.body;
       |]
     )
   | loc, Debugger -> node "DebuggerStatement" loc [||]
   | loc, ClassDeclaration c -> class_declaration (loc, c)
   | loc, InterfaceDeclaration i -> interface_declaration (loc, i)
   | loc, VariableDeclaration var -> variable_declaration (loc, var)
-  | loc, FunctionDeclaration fn ->  Function.(
-      (* esprima/estree hasn't come around to the idea that function decls can
-       * have optional ids :( *)
-      let (node_type, node_value) = (
-        match fn.id with
-        | Some(id) -> "FunctionDeclaration", identifier id
-        | None -> "FunctionExpression", null
-      ) in
-
-      let body =  (match fn.body with
-      | BodyBlock b -> block b
-      | BodyExpression b -> expression b) in
-
-      node node_type loc [|
-        "id", node_value;
-        "params", array_of_list pattern fn.params;
-        "defaults", array_of_list (option expression) fn.defaults;
-        "rest", option identifier fn.rest;
-        "body", body;
-        "async", bool fn.async;
-        "generator", bool fn.generator;
-        "expression", bool fn.expression;
-        "returnType", option type_annotation fn.returnType;
-        "typeParameters", option type_parameter_declaration fn.typeParameters;
-      |]
-    )
+  | loc, FunctionDeclaration fn -> function_declaration (loc, fn)
     | loc, DeclareVariable d -> declare_variable (loc, d)
     | loc, DeclareFunction d -> declare_function (loc, d)
     | loc, DeclareClass d -> declare_class (loc, d)
@@ -247,37 +220,54 @@ end with type t = Impl.t) = struct
         |]
       )
     | loc, DeclareExportDeclaration export -> DeclareExportDeclaration.(
-        let declaration = match export.declaration with
-        | Some (Variable v) -> declare_variable v
-        | Some (Function f) -> declare_function f
-        | Some (Class c) -> declare_class c
-        | Some (DefaultType t) -> _type t
-        | Some (NamedType t) -> type_alias t
-        | Some (Interface i) -> interface_declaration i
-        | None -> null
-        in
-        node "DeclareExportDeclaration" loc [|
-          "default", bool export.default;
-          "declaration", declaration;
-          "specifiers", export_specifiers export.specifiers;
-          "source", option literal export.source;
-        |]
+        match export.specifiers with
+        | Some (ExportNamedDeclaration.ExportBatchSpecifier (_, None)) ->
+          node "DeclareExportAllDeclaration" loc [|
+            "source", option literal export.source;
+          |]
+        | _ ->
+          let declaration = match export.declaration with
+          | Some (Variable v) -> declare_variable v
+          | Some (Function f) -> declare_function f
+          | Some (Class c) -> declare_class c
+          | Some (DefaultType t) -> _type t
+          | Some (NamedType t) -> type_alias t
+          | Some (Interface i) -> interface_declaration i
+          | None -> null
+          in
+          node "DeclareExportDeclaration" loc [|
+            "default", bool export.default;
+            "declaration", declaration;
+            "specifiers", export_specifiers export.specifiers;
+            "source", option literal export.source;
+          |]
       )
     | loc, DeclareModuleExports annot ->
         node "DeclareModuleExports" loc [|
           "typeAnnotation", type_annotation annot
         |]
-    | loc, ExportDeclaration export -> ExportDeclaration.(
+    | loc, ExportNamedDeclaration export -> ExportNamedDeclaration.(
+        match export.specifiers with
+        | Some (ExportBatchSpecifier (_, None)) ->
+          node "ExportAllDeclaration" loc [|
+            "source", option literal export.source;
+            "exportKind", string (export_kind export.exportKind);
+          |]
+        | _ ->
+          node "ExportNamedDeclaration" loc [|
+            "declaration", option statement export.declaration;
+            "specifiers", export_specifiers export.specifiers;
+            "source", option literal export.source;
+            "exportKind", string (export_kind export.exportKind);
+          |]
+      )
+    | loc, ExportDefaultDeclaration export -> ExportDefaultDeclaration.(
         let declaration = match export.declaration with
-        | Some (Declaration stmt) -> statement stmt
-        | Some (ExportDeclaration.Expression expr) -> expression expr
-        | None -> null
+        | Declaration stmt -> statement stmt
+        | ExportDefaultDeclaration.Expression expr -> expression expr
         in
-        node "ExportDeclaration" loc [|
-          "default", bool export.default;
+        node "ExportDefaultDeclaration" loc [|
           "declaration", declaration;
-          "specifiers", export_specifiers export.specifiers;
-          "source", option literal export.source;
           "exportKind", string (export_kind export.exportKind);
         |]
       )
@@ -307,6 +297,7 @@ end with type t = Impl.t) = struct
 
   and expression = Expression.(function
     | loc, This -> node "ThisExpression" loc [||]
+    | loc, Super -> node "Super" loc [||]
     | loc, Array arr ->
         node "ArrayExpression" loc [|
           "elements", array_of_list (option expression_or_spread) arr.Array.elements;
@@ -323,12 +314,11 @@ end with type t = Impl.t) = struct
         in
         node "ArrowFunctionExpression" loc [|
           "id", option identifier arrow.id;
-          "params", array_of_list pattern arrow.params;
-          "defaults", array_of_list (option expression) arrow.defaults;
-          "rest", option identifier arrow.rest;
+          "params", function_params arrow.params;
           "body", body;
           "async", bool arrow.async;
           "generator", bool arrow.generator;
+          "predicate", option predicate arrow.predicate;
           "expression", bool arrow.expression;
           "returnType", option type_annotation arrow.returnType;
           "typeParameters", option type_parameter_declaration arrow.typeParameters;
@@ -500,18 +490,39 @@ end with type t = Impl.t) = struct
           "filter", option expression gen.filter;
         |]
       )
-    | loc, Let _let -> Let.(
-        node "LetExpression" loc [|
-          "head", array_of_list let_assignment _let.head;
-          "body", expression _let.body;
-        |]
-      )
     | _loc, Identifier id -> identifier id
     | loc, Literal lit -> literal (loc, lit)
     | loc, TemplateLiteral lit -> template_literal (loc, lit)
     | loc, TaggedTemplate tagged -> tagged_template (loc, tagged)
     | loc, Class c -> class_expression (loc, c)
-    | loc, JSXElement element -> jsx_element (loc, element))
+    | loc, JSXElement element -> jsx_element (loc, element)
+    | loc, MetaProperty meta_prop -> MetaProperty.(
+        node "MetaProperty" loc [|
+          "meta", identifier meta_prop.meta;
+          "property", identifier meta_prop.property;
+        |]
+      ))
+
+  and function_declaration (loc, fn) = Function.(
+    let body = match fn.body with
+    | BodyBlock b -> block b
+    | BodyExpression b -> expression b in
+
+    node "FunctionDeclaration" loc [|
+      (* estree hasn't come around to the idea that function decls can have
+         optional ids, but acorn, babel, espree and esprima all have, so let's
+         do it too. see https://github.com/estree/estree/issues/98 *)
+      "id", option identifier fn.id;
+      "params", function_params fn.params;
+      "body", body;
+      "async", bool fn.async;
+      "generator", bool fn.generator;
+      "predicate", option predicate fn.predicate;
+      "expression", bool fn.expression;
+      "returnType", option type_annotation fn.returnType;
+      "typeParameters", option type_parameter_declaration fn.typeParameters;
+    |]
+  )
 
   and function_expression (loc, _function) = Function.(
     let body = match _function.body with
@@ -520,25 +531,32 @@ end with type t = Impl.t) = struct
     in
     node "FunctionExpression" loc [|
       "id", option identifier _function.id;
-      "params", array_of_list pattern _function.params;
-      "defaults", array_of_list (option expression) _function.defaults;
-      "rest", option identifier _function.rest;
+      "params", function_params _function.params;
       "body", body;
       "async", bool _function.async;
       "generator", bool _function.generator;
+      "predicate", option predicate _function.predicate;
       "expression", bool _function.expression;
       "returnType", option type_annotation _function.returnType;
       "typeParameters", option type_parameter_declaration _function.typeParameters;
     |]
   )
 
-  and identifier (loc, id) = Identifier.(
+  and identifier (loc, name) =
     node "Identifier" loc [|
-      "name", string id.name;
-      "typeAnnotation", option type_annotation id.typeAnnotation;
-      "optional", bool id.optional;
+      "name", string name;
+      "typeAnnotation", null;
+      "optional", bool false;
     |]
-  )
+
+  and pattern_identifier loc {
+    Pattern.Identifier.name; typeAnnotation; optional;
+  } =
+    node "Identifier" loc [|
+      "name", string (snd name);
+      "typeAnnotation", option type_annotation typeAnnotation;
+      "optional", bool optional;
+    |]
 
   and case (loc, c) = Statement.Switch.Case.(
     node "SwitchCase" loc [|
@@ -550,7 +568,6 @@ end with type t = Impl.t) = struct
   and catch (loc, c) = Statement.Try.CatchClause.(
     node "CatchClause" loc [|
       "param", pattern c.param;
-      "guard", option expression c.guard;
       "body", block c.body;
     |]
   )
@@ -560,22 +577,28 @@ end with type t = Impl.t) = struct
       "body", statement_list b.Statement.Block.body;
     |]
 
-  and let_assignment assignment = Statement.Let.(
-    obj [|
-      "id", pattern assignment.id;
-      "init", option expression assignment.init;
-    |]
-  )
-
   and declare_variable (loc, d) = Statement.DeclareVariable.(
+    let id_loc = Loc.btwn (fst d.id) (match d.typeAnnotation with
+      | Some typeAnnotation -> fst typeAnnotation
+      | None -> fst d.id) in
     node "DeclareVariable" loc [|
-      "id", identifier d.id;
+      "id", pattern_identifier id_loc {
+        Pattern.Identifier.name = d.id;
+                           typeAnnotation = d.typeAnnotation;
+                           optional = false;
+      };
     |]
   )
 
   and declare_function (loc, d) = Statement.DeclareFunction.(
+    let id_loc = Loc.btwn (fst d.id) (fst d.typeAnnotation) in
     node "DeclareFunction" loc [|
-      "id", identifier d.id;
+      "id", pattern_identifier id_loc {
+        Pattern.Identifier.name = d.id;
+                           typeAnnotation = Some d.typeAnnotation;
+                           optional = false;
+      };
+      "predicate", option predicate d.predicate
     |]
   )
 
@@ -588,20 +611,23 @@ end with type t = Impl.t) = struct
     |]
   )
 
-  and export_kind = Statement.ExportDeclaration.(function
-    | ExportType -> "type"
-    | ExportValue -> "value"
-  )
+  and export_kind = function
+    | Statement.ExportType -> "type"
+    | Statement.ExportValue -> "value"
 
-  and export_specifiers = Statement.ExportDeclaration.(function
+  and export_specifiers = Statement.ExportNamedDeclaration.(function
     | Some (ExportSpecifiers specifiers) ->
         array_of_list export_specifier specifiers
-    | Some (ExportBatchSpecifier (loc, name)) ->
+    | Some (ExportBatchSpecifier (loc, Some name)) ->
         array [|
-          node "ExportBatchSpecifier" loc [|
-            "name", option identifier name
+          node "ExportNamespaceSpecifier" loc [|
+            "exported", identifier name
           |]
         |]
+    | Some (ExportBatchSpecifier (_, None)) ->
+        (* this should've been handled by callers, since this represents an
+           ExportAllDeclaration, not a specifier. *)
+        array [||]
     | None ->
         array [||]
   )
@@ -615,16 +641,11 @@ end with type t = Impl.t) = struct
   )
 
   and class_declaration (loc, c) = Class.(
-    (* esprima/estree hasn't come around to the idea that class decls can have
-     * optional ids :( *)
-    let (node_type, node_value) = (
-      match c.id with
-      | Some(id) -> "ClassDeclaration", identifier id
-      | None -> "ClassExpression", null
-    ) in
-
-    node node_type loc [|
-      "id", node_value;
+    node "ClassDeclaration" loc [|
+      (* estree hasn't come around to the idea that class decls can have
+         optional ids, but acorn, babel, espree and esprima all have, so let's
+         do it too. see https://github.com/estree/estree/issues/98 *)
+      "id", option identifier c.id;
       "body", class_body c.body;
       "superClass", option expression c.superClass;
       "typeParameters", option type_parameter_declaration c.typeParameters;
@@ -694,6 +715,7 @@ end with type t = Impl.t) = struct
       "typeAnnotation", option type_annotation prop.typeAnnotation;
       "computed", bool computed;
       "static", bool prop.static;
+      "variance", option variance prop.variance;
     |]
   )
 
@@ -733,13 +755,25 @@ end with type t = Impl.t) = struct
           "left", pattern left;
           "right", expression right
         |]
-    | _loc, Identifier id -> identifier id
+    | loc, Identifier pattern_id ->
+        pattern_identifier loc pattern_id
     | _loc, Expression expr -> expression expr)
+
+  and function_params = function
+    | params, Some (rest_loc, { Function.RestElement.argument }) ->
+      let rest = node "RestElement" rest_loc [|
+        "argument", pattern argument;
+      |] in
+      let rev_params = params |> List.map pattern |> List.rev in
+      let params = List.rev (rest::rev_params) in
+      array (Array.of_list params)
+    | params, None ->
+      array_of_list pattern params
 
   and array_pattern_element = Pattern.Array.(function
     | Element p -> pattern p
-    | Spread (loc, { SpreadElement.argument; }) ->
-        node "SpreadElementPattern" loc [|
+    | RestElement (loc, { RestElement.argument; }) ->
+        node "RestElement" loc [|
           "argument", pattern argument;
         |]
   )
@@ -780,15 +814,17 @@ end with type t = Impl.t) = struct
       | Literal lit -> literal lit, false
       | Identifier id -> identifier id, false
       | Computed expr -> expression expr, true) in
-      node "PropertyPattern" loc [|
+      node "Property" loc [|
         "key", key;
-        "pattern", pattern prop.pattern;
-        "computed", bool computed;
+        "value", pattern prop.pattern;
+        "kind", string "init";
+        "method", bool false;
         "shorthand", bool prop.shorthand;
+        "computed", bool computed;
       |]
     )
-    | SpreadProperty (loc, prop) -> SpreadProperty.(
-      node "SpreadPropertyPattern" loc [|
+    | RestProperty (loc, prop) -> RestProperty.(
+      node "RestProperty" loc [|
         "argument", pattern prop.argument;
       |]
     )
@@ -877,9 +913,17 @@ end with type t = Impl.t) = struct
       |]
     )
 
+  and variance (_, sigil) = Variance.(
+    match sigil with
+    | Plus -> string "plus"
+    | Minus -> string "minus"
+  )
+
   and _type (loc, t) = Type.(
     match t with
     | Any -> any_type loc
+    | Mixed -> mixed_type loc
+    | Empty -> empty_type loc
     | Void -> void_type loc
     | Null -> null_type loc
     | Number -> number_type loc
@@ -890,8 +934,8 @@ end with type t = Impl.t) = struct
     | Object o -> object_type (loc, o)
     | Array t -> array_type loc t
     | Generic g -> generic_type (loc, g)
-    | Union u -> union_type (loc, u)
-    | Intersection i -> intersection_type (loc, i)
+    | Union (t0, t1, ts) -> union_type (loc, t0::t1::ts)
+    | Intersection (t0, t1, ts) -> intersection_type (loc, t0::t1::ts)
     | Typeof t -> typeof_type (loc, t)
     | Tuple t -> tuple_type (loc, t)
     | StringLiteral s -> string_literal_type (loc, s)
@@ -902,9 +946,13 @@ end with type t = Impl.t) = struct
 
   and any_type loc = node "AnyTypeAnnotation" loc [||]
 
+  and mixed_type loc = node "MixedTypeAnnotation" loc [||]
+
+  and empty_type loc = node "EmptyTypeAnnotation" loc [||]
+
   and void_type loc = node "VoidTypeAnnotation" loc [||]
 
-  and null_type loc = node "NullTypeAnnotation" loc [||]
+  and null_type loc = node "NullLiteralTypeAnnotation" loc [||]
 
   and number_type loc = node "NumberTypeAnnotation" loc [||]
 
@@ -918,24 +966,36 @@ end with type t = Impl.t) = struct
     |]
 
   and function_type (loc, fn) = Type.Function.(
+    let params, rest = fn.params in
     node "FunctionTypeAnnotation" loc [|
-      "params", array_of_list function_type_param fn.params;
+      "params", array_of_list function_type_param params;
       "returnType", _type fn.returnType;
-      "rest", option function_type_param fn.rest;
+      "rest", option function_type_rest rest;
       "typeParameters", option type_parameter_declaration fn.typeParameters;
     |]
   )
 
   and function_type_param (loc, param) = Type.Function.Param.(
     node "FunctionTypeParam" loc [|
-      "name", identifier param.name;
+      "name", option identifier param.name;
       "typeAnnotation", _type param.typeAnnotation;
       "optional", bool param.optional;
     |]
   )
 
+  and function_type_rest (_loc, { Type.Function.RestParam.argument }) =
+    (* TODO: add a node for the rest param itself, including the `...`,
+       like we do with RestElement on normal functions. This should be
+       coordinated with Babel, ast-types, etc. so keeping the status quo for
+       now. Here's an example: *)
+    (* node "FunctionTypeRestParam" loc [|
+      "argument", function_type_param argument;
+    |] *)
+    function_type_param argument
+
   and object_type (loc, o) = Type.Object.(
     node "ObjectTypeAnnotation" loc [|
+      "exact", bool o.exact;
       "properties", array_of_list object_type_property o.properties;
       "indexers", array_of_list object_type_indexer o.indexers;
       "callProperties", array_of_list object_type_call_property o.callProperties;
@@ -954,15 +1014,17 @@ end with type t = Impl.t) = struct
       "value", _type prop.value;
       "optional", bool prop.optional;
       "static", bool prop.static;
+      "variance", option variance prop.variance;
     |]
   )
 
   and object_type_indexer (loc, indexer) = Type.Object.Indexer.(
     node "ObjectTypeIndexer" loc [|
-      "id", identifier indexer.id;
+      "id", option identifier indexer.id;
       "key", _type indexer.key;
       "value", _type indexer.value;
       "static", bool indexer.static;
+      "variance", option variance indexer.variance;
     |]
   )
 
@@ -1000,14 +1062,14 @@ end with type t = Impl.t) = struct
     |]
   )
 
-  and union_type (loc, tl) =
+  and union_type (loc, ts) =
     node "UnionTypeAnnotation" loc [|
-      "types", array_of_list _type tl;
+      "types", array_of_list _type ts;
     |]
 
-  and intersection_type (loc, tl) =
+  and intersection_type (loc, ts) =
     node "IntersectionTypeAnnotation" loc [|
-      "types", array_of_list _type tl;
+      "types", array_of_list _type ts;
     |]
 
   and typeof_type (loc, t) =
@@ -1055,10 +1117,6 @@ end with type t = Impl.t) = struct
   )
 
   and type_param (loc, tp) = Type.ParameterDeclaration.TypeParam.(
-    let variance = Variance.(function
-      | Plus -> string "plus"
-      | Minus -> string "minus"
-    ) in
     node "TypeParameter" loc [|
       "name", string tp.name;
       "bound", option type_annotation tp.bound;
@@ -1176,21 +1234,25 @@ end with type t = Impl.t) = struct
     |]
   )
 
-  and export_specifier (loc, specifier) = Statement.ExportDeclaration.Specifier.(
+  and export_specifier (loc, specifier) =
+    let open Statement.ExportNamedDeclaration.ExportSpecifier in
+    let exported = match specifier.exported with
+    | Some exported -> identifier exported
+    | None -> identifier specifier.local
+    in
     node "ExportSpecifier" loc [|
-      "id", identifier specifier.id;
-      "name", option identifier specifier.name;
+      "local", identifier specifier.local;
+      "exported", exported;
     |]
-  )
 
   and import_default_specifier id =
     node "ImportDefaultSpecifier" (fst id) [|
-      "id", identifier id;
+      "local", identifier id;
     |]
 
   and import_namespace_specifier (loc, id) =
     node "ImportNamespaceSpecifier" loc [|
-      "id", identifier id;
+      "local", identifier id;
     |]
 
   and import_named_specifier local_id remote_id =
@@ -1199,9 +1261,13 @@ end with type t = Impl.t) = struct
       | Some local_id -> Loc.btwn (fst remote_id) (fst local_id)
       | None -> fst remote_id
     in
+    let local_id = match local_id with
+    | Some id -> id
+    | None -> remote_id
+    in
     node "ImportSpecifier" span_loc [|
-      "id", identifier remote_id;
-      "name", option identifier local_id;
+      "imported", identifier remote_id;
+      "local", identifier local_id;
     |]
 
   and comment_list comments = array_of_list comment comments
@@ -1213,5 +1279,13 @@ end with type t = Impl.t) = struct
     node _type loc [|
       "value", string value;
     |]
+  )
+
+  and predicate (loc, p) = Ast.Type.Predicate.(
+    let _type, value = match p with
+      | Declared e -> "DeclaredPredicate", [|"value", expression e|]
+      | Inferred -> "InferredPredicate", [||]
+    in
+    node _type loc value
   )
 end

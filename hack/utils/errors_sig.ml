@@ -33,6 +33,7 @@ module type S = sig
   val missing_field : Pos.t -> Pos.t -> string -> unit
   val generic_class_var : Pos.t -> unit
   val explain_constraint : Pos.t -> Pos.t -> string -> error -> unit
+  val explain_where_constraint : Pos.t -> Pos.t -> error -> unit
   val explain_type_constant : (Pos.t * string) list -> error -> unit
   val unexpected_arrow : Pos.t -> string -> unit
   val missing_arrow : Pos.t -> string -> unit
@@ -77,6 +78,7 @@ module type S = sig
   val dynamic_method_call : Pos.t -> unit
   val nullsafe_property_write_context : Pos.t -> unit
   val illegal_fun : Pos.t -> unit
+  val illegal_member_variable_class : Pos.t -> unit
   val illegal_meth_fun : Pos.t -> unit
   val illegal_inst_meth : Pos.t -> unit
   val illegal_meth_caller : Pos.t -> unit
@@ -203,10 +205,12 @@ module type S = sig
   val static_dynamic : Pos.t -> Pos.t -> string -> unit
   val null_member : string -> Pos.t -> (Pos.t * string) list -> unit
   val non_object_member : string -> Pos.t -> string -> Pos.t -> unit
+  val ambiguous_member : string -> Pos.t -> string -> Pos.t -> unit
   val null_container : Pos.t -> (Pos.t * string) list -> unit
   val option_mixed : Pos.t -> unit
   val declared_covariant : Pos.t -> Pos.t -> (Pos.t * string) list -> unit
   val declared_contravariant : Pos.t -> Pos.t -> (Pos.t * string) list -> unit
+  val contravariant_this: Pos.t -> string -> string -> unit
   val wrong_extend_kind : Pos.t -> string -> Pos.t -> string -> unit
   val unsatisfied_req : Pos.t -> string -> Pos.t -> unit
   val cyclic_class_def : SSet.t -> Pos.t -> unit
@@ -248,6 +252,7 @@ module type S = sig
   val visibility_extends : string -> Pos.t -> Pos.t -> string -> unit
   val member_not_implemented : string -> Pos.t -> Pos.t -> Pos.t -> unit
   val bad_decl_override : Pos.t -> string -> Pos.t -> string -> error -> unit
+  val bad_method_override : Pos.t -> string -> error -> unit
   val bad_enum_decl : Pos.t -> error -> unit
   val missing_constructor : Pos.t -> unit
   val enum_constant_type_bad : Pos.t -> Pos.t -> string -> Pos.t list -> unit
@@ -313,9 +318,11 @@ module type S = sig
   val unification_cycle : Pos.t -> string -> unit
   val eq_incompatible_types : Pos.t -> (Pos.t * string) list
     -> (Pos.t * string) list -> unit
+  val instanceof_always_false : Pos.t -> unit
+  val instanceof_always_true : Pos.t -> unit
 
   val to_json : Pos.absolute error_ -> Hh_json.json
-  val to_string : Pos.absolute error_ -> string
+  val to_string : ?indent:bool -> Pos.absolute error_ -> string
   val try_ : (unit -> 'a) -> (error -> 'a) -> 'a
   val try_with_error : (unit -> 'a) -> (unit -> 'a) -> 'a
   val try_add_err : Pos.t -> string -> (unit -> 'a) -> (unit -> 'a) -> 'a
@@ -324,8 +331,8 @@ module type S = sig
   type t
 
   val do_ : (unit -> 'a) -> t * 'a * error_flags
-  val run_in_decl_mode : (unit -> 'a) -> 'a
-  val get_lazy_decl_flag : error_flags -> bool
+  val run_in_decl_mode : Relative_path.t -> (unit -> 'a) -> 'a
+  val get_lazy_decl_flag : error_flags -> Relative_path.t option
   val ignore_ : (unit -> 'a) -> 'a
   val try_when :
     (unit -> 'a) -> when_:(unit -> bool) -> do_:(error -> unit) -> 'a

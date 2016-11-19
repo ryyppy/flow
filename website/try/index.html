@@ -10,17 +10,27 @@ layout: try
 <div class="editor">
   <div class="code" id="code">
   </div>
-  <pre class="errors" id="errors"></pre>
+  <div class="results show-loading" id="results">
+    <div class="loading">
+      <div class="loader">
+        <div class="bounce1"></div>
+        <div class="bounce2"></div>
+        <div class="bounce3"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
-  require(
-    ['{% asset_name 'tryFlow.js' %}', '{% asset_name 'flow.js' %}'],
-    function(tryFlow) {
-      tryFlow.createEditor(
-        document.getElementById("code"),
-        document.getElementById("errors")
-      );
-    }
-  );
+(function() {
+  require(['{{ site.flow.version }}/flow'], function() {}); // preload flow
+  require(['{% asset_name 'tryFlow.js' %}'], function(tryFlow) {
+    tryFlow.createEditor(
+      '{{ site.flow.version }}',
+      document.getElementById("code"),
+      document.getElementById("results"),
+      ["{{ site.flow.versions | join: '", "' }}"]
+    );
+  });
+})();
 </script>

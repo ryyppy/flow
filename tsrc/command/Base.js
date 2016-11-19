@@ -4,19 +4,19 @@ import {format} from 'util';
 
 import parseArgs from 'minimist';
 
-export type Flag = {
+export type Flag = $Exact<{
   type: "string",
   name: string,
   description: string,
   argName: string,
   aliases?: Array<string>,
   default?: string,
-} | {
+}> | $Exact<{
   type: "boolean",
   name: string,
   description: string,
   aliases?: Array<string>,
-} | {
+}> | $Exact<{
   type: "enum",
   name: string,
   description: string,
@@ -24,7 +24,7 @@ export type Flag = {
   validValues: Array<string>,
   aliases?: Array<string>,
   default?: string,
-};
+}>;
 
 export const commonFlags = {
   bin: {
@@ -143,6 +143,16 @@ export default class Base<T: Object> {
           process.stderr.write(
             format("Missing required argument for flag: %s\n", flag.name),
           ),
+          this.showUsage(this.BAD_ARGS);
+        }
+      }
+      if (flag.type === "enum") {
+        if (flag.validValues.find(v => argv[flag.name] === v) === undefined) {
+          process.stderr.write(format(
+            "%s is not a support value for enum flag %s\n",
+            argv[flag.name],
+            flag.name,
+          ));
           this.showUsage(this.BAD_ARGS);
         }
       }

@@ -46,7 +46,6 @@ val internal_error: Loc.filename -> string -> error
 val is_duplicate_provider_error: error -> bool
 
 val parse_error_to_flow_error : (Loc.t * Parse_error.t) -> error
-val strip_root_from_errors: Path.t -> error list -> error list
 
 val loc_of_error: error -> Loc.t
 val infos_of_error: error -> info list
@@ -82,6 +81,7 @@ val json_of_errors_with_context :
   Hh_json.json
 
 val print_error_color_new:
+  ?out_channel:out_channel ->
   stdin_file:stdin_file ->
   strip_root:bool ->
   one_line:bool ->
@@ -91,8 +91,10 @@ val print_error_color_new:
   unit
 
 val print_error_json :
+  strip_root: bool ->
   root:Path.t ->
-  ?timing:Timing.t option ->
+  ?pretty:bool ->
+  ?profiling:Profiling_js.t option ->
   ?stdin_file:stdin_file ->
   out_channel ->
   error list ->
@@ -100,6 +102,7 @@ val print_error_json :
 
 (* Human readable output *)
 val print_error_summary:
+  ?out_channel:out_channel ->
   flags:Options.error_flags ->
   ?stdin_file:stdin_file ->
   strip_root: bool ->
@@ -109,7 +112,10 @@ val print_error_summary:
 
 (* used by getDef for emacs/vim output - TODO remove or undeprecate *)
 val string_of_loc_deprecated: Loc.t -> string
-val print_error_deprecated: out_channel -> error list -> unit
+val print_error_deprecated:
+  strip_root: bool ->
+  root: Path.t ->
+  out_channel -> error list -> unit
 
 (* only used to get indentation info for trace formatting - TODO fumigate *)
 val format_info: info -> string

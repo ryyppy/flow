@@ -62,6 +62,7 @@ module OptionParser(Config : CONFIG) = struct
     |> shm_hash_table_pow_flag
     |> shm_log_level_flag
     |> from_flag
+    |> quiet_flag
     |> anon "root" (optional string) ~doc:"Root directory"
   )
 
@@ -73,8 +74,6 @@ module OptionParser(Config : CONFIG) = struct
           ~doc:"Output errors in JSON format"
       |> flag "--profile" no_arg
           ~doc:"Output profiling information"
-      |> flag "--quiet" no_arg
-          ~doc:"Suppress info messages to stdout (included in --json)"
       |> dummy None  (* log-file *)
       |> dummy false (* wait *)
       |> common_args
@@ -84,7 +83,6 @@ module OptionParser(Config : CONFIG) = struct
       |> dummy Options.default_error_flags (* error_flags *)
       |> dummy false (* json *)
       |> dummy false (* profile *)
-      |> dummy false (* quiet *)
       |> dummy None  (* log-file *)
       |> dummy false (* wait *)
       |> common_args
@@ -95,7 +93,6 @@ module OptionParser(Config : CONFIG) = struct
       |> flag "--json" no_arg
           ~doc:"Respond in JSON format"
       |> dummy false (* profile *)
-      |> dummy false (* quiet *)
       |> flag "--log-file" string
           ~doc:"Path to log file (default: /tmp/flow/<escaped root path>.log)"
       |> flag "--wait" no_arg
@@ -168,7 +165,6 @@ module OptionParser(Config : CONFIG) = struct
       error_flags
       json
       profile
-      quiet
       log_file
       wait
       debug
@@ -190,6 +186,7 @@ module OptionParser(Config : CONFIG) = struct
       shm_hash_table_pow
       shm_log_level
       from
+      quiet
       root
       () =
 
@@ -282,6 +279,9 @@ module OptionParser(Config : CONFIG) = struct
       opt_module_file_exts = FlowConfig.(
         flowconfig.options.Opts.module_file_exts
       );
+      opt_module_resource_exts = FlowConfig.(
+        flowconfig.options.Opts.module_resource_exts
+      );
       opt_module_name_mappers = FlowConfig.(
         flowconfig.options.Opts.module_name_mappers
       );
@@ -291,6 +291,7 @@ module OptionParser(Config : CONFIG) = struct
       opt_node_resolver_dirnames = FlowConfig.(
         flowconfig.options.Opts.node_resolver_dirnames
       );
+      opt_output_graphml = false;
       opt_profile = profile;
       opt_strip_root;
       opt_module;
@@ -333,8 +334,8 @@ module OptionParser(Config : CONFIG) = struct
       opt_esproposal_export_star_as = FlowConfig.(
         flowconfig.options.Opts.esproposal_export_star_as
       );
-      opt_ignore_fbt = FlowConfig.(
-        flowconfig.options.Opts.facebook_ignore_fbt
+      opt_facebook_fbt = FlowConfig.(
+        flowconfig.options.Opts.facebook_fbt
       );
       opt_ignore_non_literal_requires = FlowConfig.(
         flowconfig.options.Opts.ignore_non_literal_requires

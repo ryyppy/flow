@@ -18,13 +18,14 @@ module Opts : sig
     esproposal_class_static_fields: Options.esproposal_feature_mode;
     esproposal_decorators: Options.esproposal_feature_mode;
     esproposal_export_star_as: Options.esproposal_feature_mode;
-    facebook_ignore_fbt: bool;
+    facebook_fbt: string option;
     ignore_non_literal_requires: bool;
     moduleSystem: moduleSystem;
     module_name_mappers: (Str.regexp * string) list;
     node_resolver_dirnames: string list;
     munge_underscores: bool;
     module_file_exts: SSet.t;
+    module_resource_exts: SSet.t;
     modules_are_use_strict: bool;
     suppress_comments: Str.regexp list;
     suppress_types: SSet.t;

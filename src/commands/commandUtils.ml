@@ -25,7 +25,8 @@ let expand_path file =
     if Path.file_exists path
     then Path.to_string path
     else begin
-      FlowExitStatus.(exit ~msg:"File not found" Input_error)
+      let msg = Printf.sprintf "File not found: %s" (Path.to_string path) in
+      FlowExitStatus.(exit ~msg Input_error)
     end
 
 (* line split/transform utils *)
@@ -110,6 +111,7 @@ let error_flags prev = CommandSpec.ArgSpec.(
 let json_flags prev = CommandSpec.ArgSpec.(
   prev
   |> flag "--json" no_arg ~doc:"Output results in JSON format"
+  |> flag "--pretty" no_arg ~doc:"Pretty-print JSON output (implies --json)"
 )
 
 let temp_dir_flag prev = CommandSpec.ArgSpec.(
@@ -189,6 +191,12 @@ let verbose_flags =
         ~doc:"Recursively print types up to specified depth (default 1, implies --verbose)"
   )
 
+let quiet_flag prev = CommandSpec.ArgSpec.(
+  prev
+  |> flag "--quiet" no_arg
+      ~doc:"Suppress output about server startup"
+)
+
 let root_flag prev = CommandSpec.ArgSpec.(
   prev
   |> flag "--root" string
@@ -261,6 +269,7 @@ type command_params = {
   shm_hash_table_pow : int option;
   shm_log_level      : int option;
   ignore_version     : bool;
+  quiet              : bool;
 }
 
 let collect_server_flags
@@ -276,7 +285,8 @@ let collect_server_flags
     shm_hash_table_pow
     shm_log_level
     from
-    ignore_version =
+    ignore_version
+    quiet =
   let default def = function
   | Some x -> x
   | None -> def in
@@ -294,6 +304,7 @@ let collect_server_flags
     shm_hash_table_pow;
     shm_log_level;
     ignore_version;
+    quiet;
   }
 
 let server_flags prev = CommandSpec.ArgSpec.(
@@ -315,6 +326,7 @@ let server_flags prev = CommandSpec.ArgSpec.(
   |> shm_log_level_flag
   |> from_flag
   |> ignore_version_flag
+  |> quiet_flag
 )
 
 let ignores_of_arg root patterns extras =
@@ -367,6 +379,7 @@ let connect server_flags root =
     shm_log_level = server_flags.shm_log_level;
     log_file;
     ignore_version = server_flags.ignore_version;
+    quiet = server_flags.quiet;
   } in
   CommandConnect.connect env
 

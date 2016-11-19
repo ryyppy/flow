@@ -18,7 +18,7 @@ exception State_not_found
 
 module type SERVER_PROGRAM = sig
   val preinit : Options.t -> unit
-  val init : genv -> (Timing.t * env)
+  val init : genv -> (Profiling_js.t * env)
   val run_once_and_exit : env -> unit
   (* filter and relativize updated file paths *)
   val process_updates : genv -> env -> SSet.t -> FilenameSet.t
@@ -89,7 +89,7 @@ end = struct
     Flow_logger.log "Initializing Server (This might take some time)";
     grab_init_lock ~tmp_dir root;
     wakeup_client waiting_channel Starting;
-    ServerPeriodical.init ();
+    ServerPeriodical.init options;
     let env = init_fun () in
     release_init_lock ~tmp_dir root;
     wakeup_client waiting_channel Ready;
@@ -202,8 +202,8 @@ end = struct
     done
 
   let create_program_init genv = fun () ->
-    let timing, env = Program.init genv in
-    FlowEventLogger.init_done ~timing;
+    let profiling, env = Program.init genv in
+    FlowEventLogger.init_done ~profiling;
     env
 
   let open_log_file options =
@@ -263,7 +263,7 @@ end = struct
     end;
     FlowEventLogger.init_server root;
     Program.preinit options;
-    let handle = SharedMem.init { SharedMem.
+    let handle = SharedMem_js.init { SharedMem_js.
       global_size = shm_global_size;
       heap_size = shm_heap_size;
       dep_table_pow;
@@ -385,9 +385,26 @@ end = struct
     let log_file = Path.to_string (Options.log_file options) in
     let log_fd = open_log_file options in
     let config_file = Server_files_js.config_file root in
-    (* Avoid leaking stdout and stderr to the server *)
-    Unix.(set_close_on_exec stdout);
-    Unix.(set_close_on_exec stderr);
+    (* Daemon.spawn is creating a new process with log_fd as both the stdout
+     * and stderr. We are NOT leaking stdout and stderr. But the Windows
+     * implementation of OCaml does leak stdout and stderr. This means any process
+     * that waits for `flow start`'s stdout and stderr to close might wait
+     * forever.
+     *
+     * On Windows 10 (and 8 I think), you can just call `set_close_on_exec` on
+     * stdout and stderr and that seems to solve things. However, that call
+     * fails on Windows 7. After poking around for a few hours, I can't think
+     * of a solution other than manually implementing Unix.create_process
+     * correctly.
+     *
+     * So for now let's make Windows 7 not crash. It seems like `flow start` on
+     * Windows 7 doesn't actually leak stdio, so a no op is acceptable
+     *)
+    if Sys.win32
+    then Unix.(try
+      set_close_on_exec stdout;
+      set_close_on_exec stderr
+    with Unix_error (EINVAL, _, _) -> ());
     let {Daemon.pid; channels = (waiting_channel_ic, waiting_channel_oc)} =
       Daemon.spawn
         (log_fd, log_fd)
@@ -405,7 +422,7 @@ end = struct
         "log_file", JSON_String log_file;
       ]) in
       print_string json
-    end else begin
+    end else if not (Options.is_quiet options) then begin
       Printf.eprintf
         "Spawned %s (pid=%d)\n" (Program.name) pretty_pid;
       Printf.eprintf

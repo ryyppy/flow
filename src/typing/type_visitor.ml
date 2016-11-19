@@ -33,6 +33,7 @@ class ['a] t = object(self)
   | NullT _
   | VoidT _
   | TaintT _
+  | ObjProtoT _
   | FunProtoT _
   | FunProtoApplyT _
   | FunProtoBindT _
@@ -147,10 +148,20 @@ class ['a] t = object(self)
   | IdxWrapper (_, t) ->
     self#type_ cx acc t
 
-  | DepPredT _ -> acc
+  | OpenPredT (_ , t, p_map, n_map) ->
+    let acc = self#type_ cx acc t in
+    let acc = self#list (self#predicate cx) acc (Key_map.values p_map) in
+    let acc = self#list (self#predicate cx) acc (Key_map.values n_map) in
+    acc
+
+  | TypeMapT (_, _, t1, t2) ->
+    let acc = self#type_ cx acc t1 in
+    let acc = self#type_ cx acc t2 in
+    acc
 
   method private defer_use_type cx acc = function
   | DestructuringT (_, s) -> self#selector cx acc s
+  | TypeDestructorT (_, d) -> self#destructor cx acc d
 
   method private selector cx acc = function
   | Prop _ -> acc
@@ -159,70 +170,108 @@ class ['a] t = object(self)
   | ArrRest _ -> acc
   | Default -> acc
   | Become -> acc
+  | Refine p -> self#predicate cx acc p
+
+  method private predicate cx acc = function
+  | AndP (p1, p2) -> self#list (self#predicate cx) acc [p1;p2]
+  | OrP (p1, p2) -> self#list (self#predicate cx) acc [p1;p2]
+  | NotP p -> self#predicate cx acc p
+  | LeftP (_, t) -> self#type_ cx acc t
+  | RightP (_, t) -> self#type_ cx acc t
+  | ExistsP -> acc
+  | NullP -> acc
+  | MaybeP -> acc
+  | SingletonBoolP _ -> acc
+  | SingletonStrP _ -> acc
+  | SingletonNumP _ -> acc
+  | BoolP -> acc
+  | FunP -> acc
+  | NumP -> acc
+  | ObjP -> acc
+  | StrP -> acc
+  | VoidP -> acc
+  | ArrP -> acc
+  | PropExistsP _ -> acc
+  | LatentP (t, _) -> self#type_ cx acc t
+
+  method private destructor _cx acc = function
+  | NonMaybeType -> acc
+  | PropertyType _ -> acc
 
   method private use_type_ cx acc = function
   | UseT (_, t) ->
     self#type_ cx acc t
   (* Currently not walking use types. This will change in an upcoming diff. *)
-  | SummarizeT (_, _)
-  | ApplyT (_, _, _)
-  | BindT (_, _)
-  | CallT (_, _)
-  | MethodT (_, _, _, _)
-  | BecomeT (_, _)
-  | ReposLowerT (_, _)
-  | ReposUseT (_, _, _)
-  | SetPropT (_, _, _)
-  | GetPropT (_, _, _)
-  | SetElemT (_, _, _)
-  | GetElemT (_, _, _)
-  | ConstructorT (_, _, _)
-  | SuperT (_, _)
-  | MixinT (_, _)
   | AdderT (_, _, _)
-  | ComparatorT (_, _)
-  | PredicateT (_, _)
-  | EqT (_, _)
   | AndT (_, _, _)
-  | OrT (_, _, _)
-  | NotT (_, _)
-  | SpecializeT (_,_, _, _, _)
-  | ThisSpecializeT (_, _, _)
-  | VarianceCheckT (_, _, _)
+  | ApplyT (_, _, _)
+  | ArrRestT (_, _, _)
+  | AssertArithmeticOperandT _
+  | AssertBinaryInLHST _
+  | AssertBinaryInRHST _
+  | AssertForInRHST _
+  | AssertImportIsValueT (_, _)
+  | BecomeT (_, _)
+  | BindT (_, _)
+  | CallElemT _
+  | CallLatentPredT _
+  | CallOpenPredT _
+  | CallT (_, _)
+  | ChoiceKitUseT (_, _)
+  | CJSExtractNamedExportsT (_, _, _)
+  | CJSRequireT (_, _)
+  | ComparatorT (_, _)
+  | ConstructorT (_, _, _)
+  | CopyNamedExportsT (_, _, _)
+  | DebugPrintT (_)
+  | ElemT (_, _, _)
+  | EqT (_, _)
+  | ExportNamedT (_, _, _)
+  | GetElemT (_, _, _)
+  | GetKeysT (_, _)
+  | GetPropT (_, _, _)
+  | GetStaticsT (_, _)
+  | GuardT (_, _, _)
+  | HasOwnPropT (_, _)
+  | HasPropT (_, _, _)
+  | IdxUnMaybeifyT _
+  | IdxUnwrap _
+  | ImportDefaultT (_, _, _, _)
+  | ImportModuleNsT (_, _)
+  | ImportNamedT (_, _, _, _)
+  | ImportTypeofT (_, _, _)
+  | ImportTypeT (_, _, _)
+  | IntersectionPreprocessKitT (_, _)
   | LookupT (_, _, _, _, _)
+  | MakeExactT (_, _)
+  | MapTypeT (_, _, _, _)
+  | MethodT (_, _, _, _)
+  | MixinT (_, _)
+  | NotT (_, _)
   | ObjAssignT (_, _, _, _, _)
   | ObjFreezeT (_, _)
   | ObjRestT (_, _, _)
   | ObjSealT (_, _)
   | ObjTestT (_, _, _)
-  | ArrRestT (_, _, _)
+  | OrT (_, _, _)
+  | PredicateT (_, _)
+  | ReactCreateElementT _
+  | RefineT _
+  | ReposLowerT (_, _)
+  | ReposUseT (_, _, _)
+  | SentinelPropTestT _
+  | SetElemT (_, _, _)
+  | SetPropT (_, _, _)
+  | SpecializeT (_,_, _, _, _)
+  | SubstOnPredT _
+  | SummarizeT (_, _)
+  | SuperT (_, _)
+  | TestPropT (_, _, _)
+  | ThisSpecializeT (_, _, _)
   | UnaryMinusT (_, _)
   | UnifyT (_, _)
-  | GetKeysT (_, _)
-  | HasOwnPropT (_, _)
-  | HasPropT (_, _, _)
-  | ElemT (_, _, _, _)
-  | MakeExactT (_, _)
-  | CJSRequireT (_, _)
-  | ImportModuleNsT (_, _)
-  | ImportDefaultT (_, _, _, _)
-  | ImportNamedT (_, _, _, _)
-  | ImportTypeT (_, _, _)
-  | ImportTypeofT (_, _, _)
-  | AssertImportIsValueT (_, _)
-  | CJSExtractNamedExportsT (_, _, _)
-  | ExportNamedT (_, _, _)
-  | ExportStarFromT (_, _, _)
-  | DebugPrintT (_)
-  | TupleMapT (_, _, _)
-  | ReactCreateElementT _
-  | SentinelPropTestT _
-  | ChoiceKitUseT (_, _)
-  | IntersectionPreprocessKitT (_, _)
-  | IdxUnwrap _
-  | IdxUnMaybeifyT _
-  | CallAsPredicateT _
-  | PredSubstT _
+  | VarianceCheckT (_, _, _)
+  | TypeAppVarianceCheckT (_, _, _)
     -> self#__TODO__ cx acc
 
   (* The default behavior here could be fleshed out a bit, to look up the graph,
@@ -235,8 +284,14 @@ class ['a] t = object(self)
     acc
 
   method props cx acc id =
-    Context.property_maps cx
-    |> IMap.find_unsafe id
+    Context.find_props cx id
+    |> self#smap (self#prop cx) acc
+
+  method private prop cx acc p =
+    Property.fold_t (self#type_ cx) acc p
+
+  method exports cx acc id =
+    Context.find_exports cx id
     |> self#smap (self#type_ cx) acc
 
   method private eval_id cx acc id =
@@ -260,8 +315,8 @@ class ['a] t = object(self)
     let acc = self#props cx acc methods_tmap in
     acc
 
-  method private export_types cx acc { exports_tmap; cjs_export } =
-    let acc = self#props cx acc exports_tmap in
+  method private export_types cx acc { exports_tmap; cjs_export; has_every_named_export=_; } =
+    let acc = self#exports cx acc exports_tmap in
     let acc = self#opt (self#type_ cx) acc cjs_export in
     acc
 

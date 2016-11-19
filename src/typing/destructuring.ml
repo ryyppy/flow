@@ -11,7 +11,6 @@
 (* AST handling for destructuring exprs *)
 
 module Ast = Spider_monkey_ast
-module FlowError = Flow_error
 
 open Utils_js
 open Reason
@@ -24,9 +23,8 @@ open Type
  *)
 let rec extract_destructured_bindings accum pattern = Ast.Pattern.(
   match pattern with
-  | Identifier (loc, n) ->
-    let name = n.Ast.Identifier.name in
-    (loc, name)::accum
+  | Identifier { Identifier.name; _ } ->
+    name::accum
 
   | Object n ->
     let props = n.Object.properties in
@@ -48,22 +46,19 @@ and extract_obj_prop_pattern_bindings accum = Ast.Pattern.(function
     let (_, rhs_pattern) = prop.Object.Property.pattern in
     extract_destructured_bindings accum rhs_pattern
 
-  | Object.SpreadProperty _ ->
+  | Object.RestProperty _ ->
     failwith "Unsupported: Destructuring object spread properties"
 )
 
-and extract_arr_elem_pattern_bindings accum = Ast.Pattern.(function
-  | Some (Array.Element (_, pattern)) ->
+and extract_arr_elem_pattern_bindings accum = Ast.Pattern.Array.(function
+  | Some (Element (_, pattern)) ->
     extract_destructured_bindings accum pattern
 
-  | Some (Array.Spread (_, {Array.SpreadElement.argument = (_, pattern)})) ->
+  | Some (RestElement (_, {RestElement.argument = (_, pattern)})) ->
     extract_destructured_bindings accum pattern
 
   | None -> accum
 )
-
-let error_destructuring cx loc =
-  FlowError.add_error cx (loc, ["unsupported destructuring"])
 
 (* Destructuring visitor for tree-shaped patterns, parameteric over an action f
    to perform at the leaves. A type for the pattern is passed, which is taken
@@ -84,10 +79,10 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
       elements |> List.iteri (fun i -> function
         | Some (Element ((loc, _) as p)) ->
             let key = NumT (
-              mk_reason "number" loc,
+              mk_reason RNumber loc,
               Literal (float i, string_of_int i)
             ) in
-            let reason = mk_reason (spf "element %d" i) loc in
+            let reason = mk_reason (RCustom (spf "element %d" i)) loc in
             let init = Option.map init (fun init ->
               loc, Ast.Expression.(Member Member.({
                 _object = init;
@@ -112,8 +107,8 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
             ) in
             let default = Option.map default (Default.elem key reason) in
             recurse ~parent_pattern_t tvar init default p
-        | Some (Spread (loc, { SpreadElement.argument = p })) ->
-            let reason = mk_reason "rest of array pattern" loc in
+        | Some (RestElement (loc, { RestElement.argument = p })) ->
+            let reason = mk_reason RArrayPatternRestProp loc in
             let tvar =
               EvalT (curr_t, DestructuringT (reason, ArrRest i), mk_id())
             in
@@ -129,24 +124,21 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
       properties |> List.iter (function
         | Property (loc, prop) ->
             begin match prop with
-            | { Property.key =
-                  Property.Identifier (loc, { Ast.Identifier.name; _ });
-                pattern = p; _; }
+            | { Property.
+                key = Property.Identifier (loc, name);
+                pattern = p; _;
+              }
             | { Property.key =
                   Property.Literal (loc, { Ast.Literal.
                     value = Ast.Literal.String name; _ });
                 pattern = p; _; }
               ->
-                let reason = mk_reason (spf "property `%s`" name) loc in
+                let reason = mk_reason (RProperty (Some name)) loc in
                 xs := name :: !xs;
                 let init = Option.map init (fun init ->
                   loc, Ast.Expression.(Member Member.({
                     _object = init;
-                    property = PropertyIdentifier (loc, {
-                      Ast.Identifier.name;
-                      typeAnnotation = None;
-                      optional = false
-                    });
+                    property = PropertyIdentifier (loc, name);
                     computed = false;
                   }))
                 ) in
@@ -167,7 +159,7 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
             | { Property.key = Property.Computed key; pattern = p; _; } ->
                 let key_t = expr cx key in
                 let loc = fst key in
-                let reason = mk_reason "computed property/element" loc in
+                let reason = mk_reason (RCustom "computed property/element") loc in
                 let init = Option.map init (fun init ->
                   loc, Ast.Expression.(Member Member.({
                     _object = init;
@@ -186,12 +178,13 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
                 ) in
                 let default = Option.map default (Default.elem key_t reason) in
                 recurse ~parent_pattern_t tvar init default p
-            | _ ->
-              error_destructuring cx loc
+            | { Property.key = Property.Literal _; _ } ->
+                Flow_error.(add_output cx (EUnsupportedSyntax
+                  (loc, DestructuringObjectPropertyLiteralNonString)))
             end
 
-        | SpreadProperty (loc, { SpreadProperty.argument = p }) ->
-            let reason = mk_reason "object pattern spread property" loc in
+        | RestProperty (loc, { RestProperty.argument = p }) ->
+            let reason = mk_reason RObjectPatternRestProp loc in
             let tvar =
               EvalT (curr_t, DestructuringT (reason, ObjRest !xs), mk_id())
             in
@@ -200,7 +193,7 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
       )
     )
 
-  | loc, Identifier (_, { Ast.Identifier.name; _ }) ->
+  | loc, Identifier { Identifier.name = (_, name); _ } ->
       Type_inference_hooks_js.dispatch_lval_hook cx name loc (
         match (parent_pattern_t, init) with
         (**
@@ -230,13 +223,15 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
 
   | loc, Assignment { Assignment.left; right } ->
       let default = Some (Default.expr ?default right) in
-      let reason = mk_reason "default value" loc in
+      let reason = mk_reason (RCustom "default value") loc in
       let tvar =
         EvalT (curr_t, DestructuringT (reason, Default), mk_id())
       in
       recurse ?parent_pattern_t tvar init default left
 
-  | loc, _ -> error_destructuring cx loc
+  | loc, Expression _ ->
+      Flow_error.(add_output cx (EUnsupportedSyntax
+        (loc, DestructuringExpressionPattern)))
 
   in fun t init default pattern -> recurse t init default pattern
 )
@@ -247,7 +242,7 @@ let type_of_pattern = Ast.Pattern.(function
 
   | _, Object { Object.typeAnnotation; _; } -> typeAnnotation
 
-  | _, Identifier (_, { Ast.Identifier.typeAnnotation; _; }) -> typeAnnotation
+  | _, Identifier { Identifier.typeAnnotation; _; } -> typeAnnotation
 
   | _, _ -> None
 )
@@ -255,7 +250,7 @@ let type_of_pattern = Ast.Pattern.(function
 let destructuring_assignment cx ~expr rhs_t init =
   let f loc name _default t =
     (* TODO destructuring+defaults unsupported in assignment expressions *)
-    let reason = mk_reason (spf "assignment of identifier `%s`" name) loc in
+    let reason = mk_reason (RIdentifierAssignment name) loc in
     ignore Env.(set_var cx name t reason)
   in
   destructuring cx ~expr rhs_t (Some init) None ~f
