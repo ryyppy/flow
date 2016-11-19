@@ -3,17 +3,12 @@ var defaults = require("ast-types/lib/shared").defaults;
 var def = types.Type.def;
 var or = types.Type.or;
 
-def("Variance")
-  .bases("Node")
-  .build("kind")
-  .field("kind", or("plus", "minus"));
-
 def("TypeParameter")
   .bases("Type")
   .build("name", "variance", "bound", "default")
   .field("name", String)
   .field("variance",
-    or(def("Variance"), null),
+    or("plus", "minus", null),
     defaults["null"])
   .field("bound",
     or(def("TypeAnnotation"), null),
@@ -171,3 +166,27 @@ def("RestProperty")
 def("Super")
   .bases("Expression")
   .build();
+
+def("FunctionTypeParam")
+  .bases("Node")
+  .build("typeAnnotation", "optional")
+  .field("name", or(def("Identifier"), null))
+  .field("typeAnnotation", def("Type"))
+  .field("optional", Boolean);
+
+def("ObjectTypeIndexer")
+  .bases("Node")
+  .build("id", "key", "value")
+  .field("id", or(def("Identifier"), null))
+  .field("key", def("Type"))
+  .field("value", def("Type"));
+
+// https://github.com/benjamn/ast-types/issues/186
+def("ForAwaitStatement")
+  .bases("Statement")
+  .build("left", "right", "body")
+  .field("left", or(
+    def("VariableDeclaration"),
+    def("Expression")))
+  .field("right", def("Expression"))
+  .field("body", def("Statement"));

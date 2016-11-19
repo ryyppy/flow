@@ -10,15 +10,18 @@ export default suite(({addFile, flowCmd}) => [
       ['autocomplete', '--strip-root', 'foo_parse_fail.js', '10', '17'],
       'foo_parse_fail.js',
     ).stdout(
-`hasOwnProperty (prop: any) => boolean
-num number
-propertyIsEnumerable (prop: any) => boolean
-str string
-toLocaleString () => string
-toString () => string
-valueOf () => Object
-`,
-).exitCodes([0]),
+       `
+         hasOwnProperty (prop: any) => boolean
+         isPrototypeOf (o: any) => boolean
+         num number
+         propertyIsEnumerable (prop: any) => boolean
+         str string
+         toLocaleString () => string
+         toString () => string
+         valueOf () => Object
+
+       `,
+     ).exitCodes([0]),
   ]),
 
   test("json output", [
@@ -49,6 +52,24 @@ valueOf () => Object
                "end": 38
              },
              {
+               "name": "isPrototypeOf",
+               "type": "(o: any) => boolean",
+               "func_details": {
+                 "return_type": "boolean",
+                 "params": [
+                   {
+                     "name": "o",
+                     "type": "any"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 54,
+               "endline": 54,
+               "start": 5,
+               "end": 34
+             },
+             {
                "name": "num",
                "type": "number",
                "func_details": null,
@@ -71,8 +92,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 54,
-               "endline": 54,
+               "line": 55,
+               "endline": 55,
                "start": 5,
                "end": 44
              },
@@ -94,8 +115,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 55,
-               "endline": 55,
+               "line": 56,
+               "endline": 56,
                "start": 5,
                "end": 28
              },
@@ -107,8 +128,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 56,
-               "endline": 56,
+               "line": 57,
+               "endline": 57,
                "start": 5,
                "end": 22
              },
@@ -120,8 +141,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 57,
-               "endline": 57,
+               "line": 58,
+               "endline": 58,
                "start": 5,
                "end": 21
              }
@@ -181,8 +202,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 238,
-               "endline": 238,
+               "line": 240,
+               "endline": 240,
                "start": 5,
                "end": 34
              },
@@ -199,8 +220,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 239,
-               "endline": 239,
+               "line": 241,
+               "endline": 241,
                "start": 5,
                "end": 32
              },
@@ -217,8 +238,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 240,
-               "endline": 240,
+               "line": 242,
+               "endline": 242,
                "start": 5,
                "end": 31
              },
@@ -235,8 +256,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 241,
-               "endline": 241,
+               "line": 243,
+               "endline": 243,
                "start": 5,
                "end": 37
              },
@@ -253,8 +274,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 242,
-               "endline": 242,
+               "line": 244,
+               "endline": 244,
                "start": 5,
                "end": 38
              },
@@ -271,8 +292,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 243,
-               "endline": 243,
+               "line": 245,
+               "endline": 245,
                "start": 5,
                "end": 45
              },
@@ -293,8 +314,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 244,
-               "endline": 244,
+               "line": 246,
+               "endline": 246,
                "start": 5,
                "end": 62
              },
@@ -315,8 +336,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 245,
-               "endline": 245,
+               "line": 247,
+               "endline": 247,
                "start": 5,
                "end": 62
              },
@@ -337,8 +358,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 246,
-               "endline": 246,
+               "line": 248,
+               "endline": 248,
                "start": 5,
                "end": 60
              },
@@ -359,8 +380,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 247,
-               "endline": 247,
+               "line": 249,
+               "endline": 249,
                "start": 5,
                "end": 64
              },
@@ -369,8 +390,8 @@ valueOf () => Object
                "type": "number",
                "func_details": null,
                "path": "[LIB] core.js",
-               "line": 270,
-               "endline": 270,
+               "line": 273,
+               "endline": 273,
                "start": 13,
                "end": 18
              },
@@ -387,8 +408,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 248,
-               "endline": 248,
+               "line": 250,
+               "endline": 250,
                "start": 5,
                "end": 30
              },
@@ -405,8 +426,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 249,
-               "endline": 249,
+               "line": 251,
+               "endline": 251,
                "start": 5,
                "end": 39
              },
@@ -423,8 +444,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 250,
-               "endline": 250,
+               "line": 252,
+               "endline": 252,
                "start": 5,
                "end": 50
              },
@@ -441,8 +462,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 251,
-               "endline": 251,
+               "line": 253,
+               "endline": 253,
                "start": 5,
                "end": 38
              },
@@ -463,8 +484,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 252,
-               "endline": 252,
+               "line": 254,
+               "endline": 254,
                "start": 5,
                "end": 60
              },
@@ -485,8 +506,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 253,
-               "endline": 253,
+               "line": 255,
+               "endline": 255,
                "start": 5,
                "end": 62
              },
@@ -503,8 +524,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 254,
-               "endline": 254,
+               "line": 256,
+               "endline": 256,
                "start": 5,
                "end": 33
              },
@@ -525,8 +546,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 255,
-               "endline": 255,
+               "line": 257,
+               "endline": 257,
                "start": 5,
                "end": 124
              },
@@ -543,8 +564,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 256,
-               "endline": 256,
+               "line": 258,
+               "endline": 258,
                "start": 5,
                "end": 43
              },
@@ -565,8 +586,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 257,
-               "endline": 257,
+               "line": 259,
+               "endline": 259,
                "start": 5,
                "end": 47
              },
@@ -587,8 +608,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 258,
-               "endline": 258,
+               "line": 260,
+               "endline": 260,
                "start": 5,
                "end": 68
              },
@@ -609,8 +630,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 259,
-               "endline": 259,
+               "line": 261,
+               "endline": 261,
                "start": 5,
                "end": 64
              },
@@ -631,8 +652,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 260,
-               "endline": 260,
+               "line": 262,
+               "endline": 262,
                "start": 5,
                "end": 49
              },
@@ -653,8 +674,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 261,
-               "endline": 261,
+               "line": 263,
+               "endline": 263,
                "start": 5,
                "end": 50
              },
@@ -666,8 +687,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 262,
-               "endline": 262,
+               "line": 264,
+               "endline": 264,
                "start": 5,
                "end": 31
              },
@@ -679,8 +700,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 263,
-               "endline": 263,
+               "line": 265,
+               "endline": 265,
                "start": 5,
                "end": 31
              },
@@ -692,10 +713,23 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 264,
-               "endline": 264,
+               "line": 266,
+               "endline": 266,
                "start": 5,
                "end": 25
+             },
+             {
+               "name": "toString",
+               "type": "() => string",
+               "func_details": {
+                 "return_type": "string",
+                 "params": []
+               },
+               "path": "[LIB] core.js",
+               "line": 272,
+               "endline": 272,
+               "start": 5,
+               "end": 22
              },
              {
                "name": "toUpperCase",
@@ -705,8 +739,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 265,
-               "endline": 265,
+               "line": 267,
+               "endline": 267,
                "start": 5,
                "end": 25
              },
@@ -718,8 +752,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 266,
-               "endline": 266,
+               "line": 268,
+               "endline": 268,
                "start": 5,
                "end": 18
              },
@@ -731,8 +765,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 267,
-               "endline": 267,
+               "line": 269,
+               "endline": 269,
                "start": 5,
                "end": 22
              },
@@ -744,8 +778,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 268,
-               "endline": 268,
+               "line": 270,
+               "endline": 270,
                "start": 5,
                "end": 23
              },
@@ -757,8 +791,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 269,
-               "endline": 269,
+               "line": 271,
+               "endline": 271,
                "start": 5,
                "end": 21
              }
@@ -789,8 +823,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 126,
-               "endline": 126,
+               "line": 128,
+               "endline": 128,
                "start": 5,
                "end": 50
              },
@@ -807,8 +841,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 127,
-               "endline": 127,
+               "line": 129,
+               "endline": 129,
                "start": 5,
                "end": 44
              },
@@ -825,8 +859,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 128,
-               "endline": 128,
+               "line": 130,
+               "endline": 130,
                "start": 5,
                "end": 43
              },
@@ -843,8 +877,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 129,
-               "endline": 129,
+               "line": 131,
+               "endline": 131,
                "start": 5,
                "end": 36
              },
@@ -856,8 +890,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 130,
-               "endline": 130,
+               "line": 132,
+               "endline": 132,
                "start": 5,
                "end": 21
              }
@@ -876,6 +910,19 @@ valueOf () => Object
          {
            "result": [
              {
+               "name": "toString",
+               "type": "() => string",
+               "func_details": {
+                 "return_type": "string",
+                 "params": []
+               },
+               "path": "[LIB] core.js",
+               "line": 109,
+               "endline": 109,
+               "start": 5,
+               "end": 22
+             },
+             {
                "name": "valueOf",
                "type": "() => boolean",
                "func_details": {
@@ -883,8 +930,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 107,
-               "endline": 107,
+               "line": 108,
+               "endline": 108,
                "start": 5,
                "end": 22
              }
@@ -931,6 +978,24 @@ valueOf () => Object
                "end": 38
              },
              {
+               "name": "isPrototypeOf",
+               "type": "(o: any) => boolean",
+               "func_details": {
+                 "return_type": "boolean",
+                 "params": [
+                   {
+                     "name": "o",
+                     "type": "any"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 54,
+               "endline": 54,
+               "start": 5,
+               "end": 34
+             },
+             {
                "name": "propertyIsEnumerable",
                "type": "(prop: any) => boolean",
                "func_details": {
@@ -943,8 +1008,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 54,
-               "endline": 54,
+               "line": 55,
+               "endline": 55,
                "start": 5,
                "end": 44
              },
@@ -956,8 +1021,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 55,
-               "endline": 55,
+               "line": 56,
+               "endline": 56,
                "start": 5,
                "end": 28
              },
@@ -969,8 +1034,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 56,
-               "endline": 56,
+               "line": 57,
+               "endline": 57,
                "start": 5,
                "end": 22
              },
@@ -982,8 +1047,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 57,
-               "endline": 57,
+               "line": 58,
+               "endline": 58,
                "start": 5,
                "end": 21
              }
@@ -1020,6 +1085,24 @@ valueOf () => Object
                "end": 38
              },
              {
+               "name": "isPrototypeOf",
+               "type": "(o: any) => boolean",
+               "func_details": {
+                 "return_type": "boolean",
+                 "params": [
+                   {
+                     "name": "o",
+                     "type": "any"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 54,
+               "endline": 54,
+               "start": 5,
+               "end": 34
+             },
+             {
                "name": "propertyIsEnumerable",
                "type": "(prop: any) => boolean",
                "func_details": {
@@ -1032,8 +1115,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 54,
-               "endline": 54,
+               "line": 55,
+               "endline": 55,
                "start": 5,
                "end": 44
              },
@@ -1045,8 +1128,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 55,
-               "endline": 55,
+               "line": 56,
+               "endline": 56,
                "start": 5,
                "end": 28
              },
@@ -1058,8 +1141,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 56,
-               "endline": 56,
+               "line": 57,
+               "endline": 57,
                "start": 5,
                "end": 22
              },
@@ -1071,8 +1154,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 57,
-               "endline": 57,
+               "line": 58,
+               "endline": 58,
                "start": 5,
                "end": 21
              }
@@ -1107,8 +1190,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 96,
-               "endline": 96,
+               "line": 97,
+               "endline": 97,
                "start": 12,
                "end": 35
              },
@@ -1117,35 +1200,13 @@ valueOf () => Object
                "type": "any",
                "func_details": null,
                "path": "[LIB] core.js",
-               "line": 99,
-               "endline": 99,
+               "line": 100,
+               "endline": 100,
                "start": 16,
                "end": 18
              },
              {
                "name": "bind",
-               "type": "(thisArg: any, ...argArray: Array<any>) => any",
-               "func_details": {
-                 "return_type": "any",
-                 "params": [
-                   {
-                     "name": "thisArg",
-                     "type": "any"
-                   },
-                   {
-                     "name": "...argArray",
-                     "type": "Array<any>"
-                   }
-                 ]
-               },
-               "path": "[LIB] core.js",
-               "line": 97,
-               "endline": 97,
-               "start": 11,
-               "end": 33
-             },
-             {
-               "name": "call",
                "type": "(thisArg: any, ...argArray: Array<any>) => any",
                "func_details": {
                  "return_type": "any",
@@ -1167,12 +1228,34 @@ valueOf () => Object
                "end": 33
              },
              {
+               "name": "call",
+               "type": "(thisArg: any, ...argArray: Array<any>) => any",
+               "func_details": {
+                 "return_type": "any",
+                 "params": [
+                   {
+                     "name": "thisArg",
+                     "type": "any"
+                   },
+                   {
+                     "name": "...argArray",
+                     "type": "Array<any>"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 99,
+               "endline": 99,
+               "start": 11,
+               "end": 33
+             },
+             {
                "name": "caller",
                "type": "null | Function",
                "func_details": null,
                "path": "[LIB] core.js",
-               "line": 100,
-               "endline": 100,
+               "line": 101,
+               "endline": 101,
                "start": 13,
                "end": 27
              },
@@ -1195,12 +1278,30 @@ valueOf () => Object
                "end": 38
              },
              {
+               "name": "isPrototypeOf",
+               "type": "(o: any) => boolean",
+               "func_details": {
+                 "return_type": "boolean",
+                 "params": [
+                   {
+                     "name": "o",
+                     "type": "any"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 54,
+               "endline": 54,
+               "start": 5,
+               "end": 34
+             },
+             {
                "name": "length",
                "type": "number",
                "func_details": null,
                "path": "[LIB] core.js",
-               "line": 101,
-               "endline": 101,
+               "line": 102,
+               "endline": 102,
                "start": 13,
                "end": 18
              },
@@ -1209,8 +1310,8 @@ valueOf () => Object
                "type": "string",
                "func_details": null,
                "path": "[LIB] core.js",
-               "line": 102,
-               "endline": 102,
+               "line": 103,
+               "endline": 103,
                "start": 11,
                "end": 16
              },
@@ -1227,8 +1328,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 54,
-               "endline": 54,
+               "line": 55,
+               "endline": 55,
                "start": 5,
                "end": 44
              },
@@ -1240,8 +1341,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 55,
-               "endline": 55,
+               "line": 56,
+               "endline": 56,
                "start": 5,
                "end": 28
              },
@@ -1253,8 +1354,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 56,
-               "endline": 56,
+               "line": 57,
+               "endline": 57,
                "start": 5,
                "end": 22
              },
@@ -1266,8 +1367,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 57,
-               "endline": 57,
+               "line": 58,
+               "endline": 58,
                "start": 5,
                "end": 21
              }
@@ -1302,8 +1403,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 96,
-               "endline": 96,
+               "line": 97,
+               "endline": 97,
                "start": 12,
                "end": 35
              },
@@ -1312,35 +1413,13 @@ valueOf () => Object
                "type": "any",
                "func_details": null,
                "path": "[LIB] core.js",
-               "line": 99,
-               "endline": 99,
+               "line": 100,
+               "endline": 100,
                "start": 16,
                "end": 18
              },
              {
                "name": "bind",
-               "type": "(thisArg: any, ...argArray: Array<any>) => any",
-               "func_details": {
-                 "return_type": "any",
-                 "params": [
-                   {
-                     "name": "thisArg",
-                     "type": "any"
-                   },
-                   {
-                     "name": "...argArray",
-                     "type": "Array<any>"
-                   }
-                 ]
-               },
-               "path": "[LIB] core.js",
-               "line": 97,
-               "endline": 97,
-               "start": 11,
-               "end": 33
-             },
-             {
-               "name": "call",
                "type": "(thisArg: any, ...argArray: Array<any>) => any",
                "func_details": {
                  "return_type": "any",
@@ -1362,12 +1441,34 @@ valueOf () => Object
                "end": 33
              },
              {
+               "name": "call",
+               "type": "(thisArg: any, ...argArray: Array<any>) => any",
+               "func_details": {
+                 "return_type": "any",
+                 "params": [
+                   {
+                     "name": "thisArg",
+                     "type": "any"
+                   },
+                   {
+                     "name": "...argArray",
+                     "type": "Array<any>"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 99,
+               "endline": 99,
+               "start": 11,
+               "end": 33
+             },
+             {
                "name": "caller",
                "type": "null | Function",
                "func_details": null,
                "path": "[LIB] core.js",
-               "line": 100,
-               "endline": 100,
+               "line": 101,
+               "endline": 101,
                "start": 13,
                "end": 27
              },
@@ -1390,12 +1491,30 @@ valueOf () => Object
                "end": 38
              },
              {
+               "name": "isPrototypeOf",
+               "type": "(o: any) => boolean",
+               "func_details": {
+                 "return_type": "boolean",
+                 "params": [
+                   {
+                     "name": "o",
+                     "type": "any"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 54,
+               "endline": 54,
+               "start": 5,
+               "end": 34
+             },
+             {
                "name": "length",
                "type": "number",
                "func_details": null,
                "path": "[LIB] core.js",
-               "line": 101,
-               "endline": 101,
+               "line": 102,
+               "endline": 102,
                "start": 13,
                "end": 18
              },
@@ -1404,8 +1523,8 @@ valueOf () => Object
                "type": "string",
                "func_details": null,
                "path": "[LIB] core.js",
-               "line": 102,
-               "endline": 102,
+               "line": 103,
+               "endline": 103,
                "start": 11,
                "end": 16
              },
@@ -1422,8 +1541,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 54,
-               "endline": 54,
+               "line": 55,
+               "endline": 55,
                "start": 5,
                "end": 44
              },
@@ -1435,8 +1554,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 55,
-               "endline": 55,
+               "line": 56,
+               "endline": 56,
                "start": 5,
                "end": 28
              },
@@ -1448,8 +1567,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 56,
-               "endline": 56,
+               "line": 57,
+               "endline": 57,
                "start": 5,
                "end": 22
              },
@@ -1461,8 +1580,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 57,
-               "endline": 57,
+               "line": 58,
+               "endline": 58,
                "start": 5,
                "end": 21
              }
@@ -1541,8 +1660,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 126,
-               "endline": 126,
+               "line": 128,
+               "endline": 128,
                "start": 5,
                "end": 50
              },
@@ -1559,8 +1678,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 127,
-               "endline": 127,
+               "line": 129,
+               "endline": 129,
                "start": 5,
                "end": 44
              },
@@ -1577,8 +1696,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 128,
-               "endline": 128,
+               "line": 130,
+               "endline": 130,
                "start": 5,
                "end": 43
              },
@@ -1595,8 +1714,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 129,
-               "endline": 129,
+               "line": 131,
+               "endline": 131,
                "start": 5,
                "end": 36
              },
@@ -1608,8 +1727,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 130,
-               "endline": 130,
+               "line": 132,
+               "endline": 132,
                "start": 5,
                "end": 21
              }
@@ -1656,6 +1775,24 @@ valueOf () => Object
                "end": 38
              },
              {
+               "name": "isPrototypeOf",
+               "type": "(o: any) => boolean",
+               "func_details": {
+                 "return_type": "boolean",
+                 "params": [
+                   {
+                     "name": "o",
+                     "type": "any"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 54,
+               "endline": 54,
+               "start": 5,
+               "end": 34
+             },
+             {
                "name": "propertyIsEnumerable",
                "type": "(prop: any) => boolean",
                "func_details": {
@@ -1668,8 +1805,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 54,
-               "endline": 54,
+               "line": 55,
+               "endline": 55,
                "start": 5,
                "end": 44
              },
@@ -1681,8 +1818,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 55,
-               "endline": 55,
+               "line": 56,
+               "endline": 56,
                "start": 5,
                "end": 28
              },
@@ -1694,8 +1831,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 56,
-               "endline": 56,
+               "line": 57,
+               "endline": 57,
                "start": 5,
                "end": 22
              },
@@ -1707,8 +1844,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 57,
-               "endline": 57,
+               "line": 58,
+               "endline": 58,
                "start": 5,
                "end": 21
              }
@@ -1763,6 +1900,24 @@ valueOf () => Object
                "end": 38
              },
              {
+               "name": "isPrototypeOf",
+               "type": "(o: any) => boolean",
+               "func_details": {
+                 "return_type": "boolean",
+                 "params": [
+                   {
+                     "name": "o",
+                     "type": "any"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 54,
+               "endline": 54,
+               "start": 5,
+               "end": 34
+             },
+             {
                "name": "o",
                "type": "{x?: string}",
                "func_details": null,
@@ -1785,8 +1940,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 54,
-               "endline": 54,
+               "line": 55,
+               "endline": 55,
                "start": 5,
                "end": 44
              },
@@ -1798,8 +1953,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 55,
-               "endline": 55,
+               "line": 56,
+               "endline": 56,
                "start": 5,
                "end": 28
              },
@@ -1811,8 +1966,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 56,
-               "endline": 56,
+               "line": 57,
+               "endline": 57,
                "start": 5,
                "end": 22
              },
@@ -1824,8 +1979,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 57,
-               "endline": 57,
+               "line": 58,
+               "endline": 58,
                "start": 5,
                "end": 21
              },
@@ -1872,6 +2027,24 @@ valueOf () => Object
                "end": 38
              },
              {
+               "name": "isPrototypeOf",
+               "type": "(o: any) => boolean",
+               "func_details": {
+                 "return_type": "boolean",
+                 "params": [
+                   {
+                     "name": "o",
+                     "type": "any"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 54,
+               "endline": 54,
+               "start": 5,
+               "end": 34
+             },
+             {
                "name": "propertyIsEnumerable",
                "type": "(prop: any) => boolean",
                "func_details": {
@@ -1884,8 +2057,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 54,
-               "endline": 54,
+               "line": 55,
+               "endline": 55,
                "start": 5,
                "end": 44
              },
@@ -1897,8 +2070,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 55,
-               "endline": 55,
+               "line": 56,
+               "endline": 56,
                "start": 5,
                "end": 28
              },
@@ -1910,8 +2083,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 56,
-               "endline": 56,
+               "line": 57,
+               "endline": 57,
                "start": 5,
                "end": 22
              },
@@ -1923,8 +2096,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 57,
-               "endline": 57,
+               "line": 58,
+               "endline": 58,
                "start": 5,
                "end": 21
              },
@@ -1971,6 +2144,24 @@ valueOf () => Object
                "end": 38
              },
              {
+               "name": "isPrototypeOf",
+               "type": "(o: any) => boolean",
+               "func_details": {
+                 "return_type": "boolean",
+                 "params": [
+                   {
+                     "name": "o",
+                     "type": "any"
+                   }
+                 ]
+               },
+               "path": "[LIB] core.js",
+               "line": 54,
+               "endline": 54,
+               "start": 5,
+               "end": 34
+             },
+             {
                "name": "propertyIsEnumerable",
                "type": "(prop: any) => boolean",
                "func_details": {
@@ -1983,8 +2174,8 @@ valueOf () => Object
                  ]
                },
                "path": "[LIB] core.js",
-               "line": 54,
-               "endline": 54,
+               "line": 55,
+               "endline": 55,
                "start": 5,
                "end": 44
              },
@@ -1996,8 +2187,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 55,
-               "endline": 55,
+               "line": 56,
+               "endline": 56,
                "start": 5,
                "end": 28
              },
@@ -2009,8 +2200,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 56,
-               "endline": 56,
+               "line": 57,
+               "endline": 57,
                "start": 5,
                "end": 22
              },
@@ -2022,8 +2213,8 @@ valueOf () => Object
                  "params": []
                },
                "path": "[LIB] core.js",
-               "line": 57,
-               "endline": 57,
+               "line": 58,
+               "endline": 58,
                "start": 5,
                "end": 21
              },

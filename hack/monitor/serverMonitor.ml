@@ -103,6 +103,7 @@ let update_status_ (server: ServerProcess.server_process) monitor_config =
         let was_oom = match proc_stat with
         | Unix.WEXITED code when code = oom_code -> true
         | _ -> check_dmesg_for_oom process in
+        monitor_config.on_server_exit monitor_config;
         ServerProcessTools.check_exit_status proc_stat process monitor_config;
         Died_unexpectedly (proc_stat, was_oom))
   | _ -> server
@@ -149,6 +150,10 @@ let update_status env monitor_config =
     (fun server -> update_status_ server monitor_config)
     env.servers in
    let env = { env with servers = servers } in
+   let watchman_fresh_instance _ status = match status with
+     | Died_unexpectedly ((Unix.WEXITED c), _)
+         when c = Exit_status.(exit_code Watchman_fresh_instance) -> true
+     | _ -> false in
    let watchman_failed _ status = match status with
      | Died_unexpectedly ((Unix.WEXITED c), _)
         when c = Exit_status.(exit_code Watchman_failed) -> true
@@ -157,8 +162,13 @@ let update_status env monitor_config =
      | Died_unexpectedly ((Unix.WEXITED c), _)
         when c = Exit_status.(exit_code Hhconfig_changed) -> true
      | _ -> false in
+   let file_heap_stale _ status = match status with
+     | Died_unexpectedly ((Unix.WEXITED c), _)
+        when c = Exit_status.(exit_code File_heap_stale) -> true
+     | _ -> false in
    let max_watchman_retries = 3 in
-   if (SMap.exists watchman_failed servers)
+   if (SMap.exists watchman_failed servers
+     || SMap.exists watchman_fresh_instance servers)
      && (env.retries < max_watchman_retries) then begin
      Hh_logger.log "Watchman died. Restarting hh_server (attempt: %d)"
        (env.retries + 1);
@@ -167,7 +177,11 @@ let update_status env monitor_config =
    else if SMap.exists config_changed servers then begin
      Hh_logger.log "hh_server died from hh config change. Restarting";
      restart_servers env
-   end
+   end else if SMap.exists file_heap_stale servers then begin
+     Hh_logger.log
+      "Several large rebases caused FileHeap to be stale. Restarting";
+     restart_servers env
+  end
    else
      { env with servers = servers }
 

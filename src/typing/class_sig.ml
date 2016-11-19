@@ -1,7 +1,16 @@
+(**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the "flow" directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ *)
+
 module Anno = Type_annotation
 module Ast = Spider_monkey_ast
 module Flow = Flow_js
-module Utils = Utils_js
 
 open Reason
 
@@ -277,7 +286,7 @@ let classtype cx ?(check_polarity=true) x =
   } = x in
   let open Type in
   let sinsttype, insttype = mutually (insttype cx x) in
-  let static = InstanceT (sreason, MixedT.t, ssuper, sinsttype) in
+  let static = InstanceT (sreason, ObjProtoT.t, ssuper, sinsttype) in
   let this = InstanceT (reason, static, super, insttype) in
   (if check_polarity then Flow.check_polarity cx Positive this);
   let t = if structural then ClassT this else ThisClassT this in
@@ -306,7 +315,7 @@ let mk_super cx tparams_map c targs = Type.(
 
 let mk_interface_super cx structural reason tparams_map = Type.(function
   | (None, None) ->
-      MixedT (locationless_reason RObjectClassName, Mixed_everything)
+      ObjProtoT (locationless_reason RObjectClassName)
   | (None, _) ->
       assert false (* type args with no head expr *)
   | (Some id, targs) ->
@@ -322,7 +331,7 @@ let mk_interface_super cx structural reason tparams_map = Type.(function
 
 let mk_extends cx tparams_map ~expr = Type.(function
   | (None, None) ->
-      MixedT (locationless_reason RObjectClassName, Mixed_everything)
+      ObjProtoT (locationless_reason RObjectClassName)
   | (None, _) ->
       assert false (* type args with no head expr *)
   | (Some e, targs) ->
@@ -332,7 +341,7 @@ let mk_extends cx tparams_map ~expr = Type.(function
 
 let mk_mixins cx reason tparams_map = Type.(function
   | (None, None) ->
-      MixedT (locationless_reason RObjectClassName, Mixed_everything)
+      ObjProtoT (locationless_reason RObjectClassName)
   | (None, _) ->
       assert false (* type args with no head expr *)
   | (Some id, targs) ->
@@ -375,9 +384,8 @@ let mk cx loc reason self ~expr = Ast.Class.(
   warn_or_ignore_decorators cx classDecorators;
 
   (* TODO *)
-  if implements <> [] then
-    let msg = "implements not supported" in
-    Flow_error.add_error cx (loc, [msg])
+  if implements <> []
+  then Flow_error.(add_output cx (EUnsupportedSyntax (loc, Implements)))
   else ();
 
   let tparams, tparams_map =
@@ -427,8 +435,7 @@ let mk cx loc reason self ~expr = Ast.Class.(
   List.fold_left (fun c -> function
     (* instance and static methods *)
     | Body.Method (loc, {
-        Method.key = Ast.Expression.Object.Property.Identifier (_,
-          { Ast.Identifier.name; _ });
+        Method.key = Ast.Expression.Object.Property.Identifier (_, name);
         value = (_, func);
         kind;
         static;
@@ -446,13 +453,13 @@ let mk cx loc reason self ~expr = Ast.Class.(
           RConstructor,
           add_constructor
       | Method.Method ->
-          RProperty name,
+          RProperty (Some name),
           add_method ~static name
       | Method.Get ->
-          RProperty name,
+          RProperty (Some name),
           add_getter ~static name
       | Method.Set ->
-          RProperty name,
+          RProperty (Some name),
           add_setter ~static name
       in
       let reason = mk_reason method_desc loc in
@@ -461,8 +468,7 @@ let mk cx loc reason self ~expr = Ast.Class.(
 
     (* fields *)
     | Body.Property (loc, {
-        Property.key = Ast.Expression.Object.Property.Identifier
-          (_, { Ast.Identifier.name; _ });
+        Property.key = Ast.Expression.Object.Property.Identifier (_, name);
         typeAnnotation;
         value;
         static;
@@ -472,7 +478,7 @@ let mk cx loc reason self ~expr = Ast.Class.(
         if value <> None
         then Flow_error.warn_or_ignore_class_properties cx ~static loc;
 
-        let reason = mk_reason (RProperty name) loc in
+        let reason = mk_reason (RProperty (Some name)) loc in
         let polarity = Anno.polarity variance in
         let field = mk_field cx ~polarity c reason typeAnnotation value in
         add_field ~static name field c
@@ -486,8 +492,8 @@ let mk cx loc reason self ~expr = Ast.Class.(
         Property.key = Ast.Expression.Object.Property.Literal _;
         _
       }) ->
-        let msg = "literal properties not yet supported" in
-        Flow_error.add_error cx (loc, [msg]);
+        Flow_error.(add_output cx
+          (EUnsupportedSyntax (loc, ClassPropertyLiteral)));
         c
 
     (* computed LHS *)
@@ -499,8 +505,8 @@ let mk cx loc reason self ~expr = Ast.Class.(
         Property.key = Ast.Expression.Object.Property.Computed _;
         _
       }) ->
-        let msg = "computed property keys not supported" in
-        Flow_error.add_error cx (loc, [msg]);
+        Flow_error.(add_output cx
+          (EUnsupportedSyntax (loc, ClassPropertyComputed)));
         c
   ) class_sig elements
 )
@@ -512,10 +518,11 @@ let rec extract_extends cx structural = function
   | (loc, {Ast.Type.Generic.id; typeParameters})::others ->
       if structural
       then (Some id, typeParameters)::(extract_extends cx structural others)
-      else
-        let msg = "A class cannot extend multiple classes!" in
-        Flow_error.add_error cx (loc, [msg]);
+      else (
+        Flow_error.(add_output cx
+          (EUnsupportedSyntax (loc, ClassExtendsMultiple)));
         []
+      )
 
 let extract_mixins _cx =
   List.map (fun (_, {Ast.Type.Generic.id; typeParameters}) ->
@@ -569,18 +576,14 @@ let mk_interface cx loc reason structural self = Ast.Statement.(
       key; value; static; _method; optional; variance; _
     }) ->
     if optional && _method
-    then begin
-      let msg = "optional methods are not supported" in
-      Flow_error.add_error cx (loc, [msg])
-    end;
+    then Flow_error.(add_output cx (EInternal (loc, OptionalMethod)));
     let polarity = Anno.polarity variance in
     Ast.Expression.Object.(match _method, key with
     | _, Property.Literal (loc, _)
     | _, Property.Computed (loc, _) ->
-        let msg = "illegal name" in
-        Flow_error.add_error cx (loc, [msg]);
+        Flow_error.(add_output cx (EIllegalName loc));
         s
-    | true, Property.Identifier (_, {Ast.Identifier.name; _}) ->
+    | true, Property.Identifier (_, name) ->
         (match value with
         | _, Ast.Type.Function func ->
           let fsig = Func_sig.convert cx tparams_map loc func in
@@ -590,10 +593,9 @@ let mk_interface cx loc reason structural self = Ast.Statement.(
           in
           append_method fsig s
         | _ ->
-          let msg = "internal error: expected function type" in
-          Flow_error.add_internal_error cx (loc, [msg]);
+          Flow_error.(add_output cx (EInternal (loc, MethodNotAFunction)));
           s)
-    | false, Property.Identifier (_, {Ast.Identifier.name; _}) ->
+    | false, Property.Identifier (_, name) ->
         let t = Anno.convert cx tparams_map value in
         let t = if optional then Type.OptionalT t else t in
         add_field ~static name (t, polarity, None) s)
@@ -604,8 +606,8 @@ let mk_interface cx loc reason structural self = Ast.Statement.(
     | (_, {Ast.Type.Object.Indexer.key; value; static; variance; _})::rest ->
       (* TODO? *)
       List.iter (fun (indexer_loc, _) ->
-        let msg = "multiple indexers are not supported" in
-        Flow_error.add_error cx (indexer_loc, [msg]);
+        Flow_error.(add_output cx
+          (EUnsupportedSyntax (indexer_loc, MultipleIndexers)))
       ) rest;
       let k = Anno.convert cx tparams_map key in
       let v = Anno.convert cx tparams_map value in
@@ -676,8 +678,8 @@ let toplevels cx ~decls ~stmts ~expr x =
          locals, e.g., so it cannot be used in general to track definite
          assignments. *)
       let derived_ctor = Type.(match s.super with
-        | ClassT (MixedT _) -> false
-        | MixedT _ -> false
+        | ClassT (ObjProtoT _) -> false
+        | ObjProtoT _ -> false
         | _ -> true
       ) in
       let new_entry t =

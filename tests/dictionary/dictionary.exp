@@ -6,7 +6,7 @@ any.js:5
 
 dictionary.js:47
  47:   o.p = new A; // error, A ~> B
-                 ^ A. This type is incompatible with
+             ^^^^^ A. This type is incompatible with
  45:   o: {[k:string]:B},
                       ^ B
 
@@ -23,8 +23,6 @@ dictionary.js:66
               ^^^^^^ number
 
 dictionary.js:94
- 94:   (o.toString(): boolean); // error: string ~> boolean
-        ^^^^^^^^^^^^ call of method `toString`
  94:   (o.toString(): boolean); // error: string ~> boolean
         ^^^^^^^^^^^^ string. This type is incompatible with
  94:   (o.toString(): boolean); // error: string ~> boolean
@@ -68,19 +66,19 @@ dictionary.js:128
 
 dictionary.js:139
 139:     a: new A, // error, A not <: B
-                ^ A. This type is incompatible with
+            ^^^^^ A. This type is incompatible with
 138:   let b: {[k:string]:B} = {
                           ^ B
 
 dictionary.js:145
 145:     a: new A, // error, A not <: C
-                ^ A. This type is incompatible with
+            ^^^^^ A. This type is incompatible with
 144:   let c: {[k:string]:C} = {
                           ^ C
 
 dictionary.js:146
 146:     b: new B, // error, A not <: C
-                ^ B. This type is incompatible with
+            ^^^^^ B. This type is incompatible with
 144:   let c: {[k:string]:C} = {
                           ^ C
 

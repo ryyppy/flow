@@ -18,7 +18,7 @@ exception State_not_found
 
 module type SERVER_PROGRAM = sig
   val preinit : Options.t -> unit
-  val init : genv -> (Timing.t * env)
+  val init : genv -> (Profiling_js.t * env)
   val run_once_and_exit : env -> unit
   (* filter and relativize updated file paths *)
   val process_updates : genv -> env -> SSet.t -> FilenameSet.t
@@ -89,7 +89,7 @@ end = struct
     Flow_logger.log "Initializing Server (This might take some time)";
     grab_init_lock ~tmp_dir root;
     wakeup_client waiting_channel Starting;
-    ServerPeriodical.init ();
+    ServerPeriodical.init options;
     let env = init_fun () in
     release_init_lock ~tmp_dir root;
     wakeup_client waiting_channel Ready;
@@ -202,8 +202,8 @@ end = struct
     done
 
   let create_program_init genv = fun () ->
-    let timing, env = Program.init genv in
-    FlowEventLogger.init_done ~timing;
+    let profiling, env = Program.init genv in
+    FlowEventLogger.init_done ~profiling;
     env
 
   let open_log_file options =
@@ -263,7 +263,7 @@ end = struct
     end;
     FlowEventLogger.init_server root;
     Program.preinit options;
-    let handle = SharedMem.init { SharedMem.
+    let handle = SharedMem_js.init { SharedMem_js.
       global_size = shm_global_size;
       heap_size = shm_heap_size;
       dep_table_pow;
@@ -422,7 +422,7 @@ end = struct
         "log_file", JSON_String log_file;
       ]) in
       print_string json
-    end else begin
+    end else if not (Options.is_quiet options) then begin
       Printf.eprintf
         "Spawned %s (pid=%d)\n" (Program.name) pretty_pid;
       Printf.eprintf

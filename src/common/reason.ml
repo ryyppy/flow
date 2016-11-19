@@ -79,6 +79,10 @@ type reason_desc =
   | RFunctionType
   | RFunctionBody
   | RFunctionCall
+  | RJSXFunctionCall of string
+  | RJSXIdentifier of string * string
+  | RJSXElementProps of string
+  | RJSXElement of string option
   | RAnyObject
   | RAnyFunction
   | RUnknownString
@@ -117,18 +121,18 @@ type reason_desc =
   | RObjectMapi
   | RType of string
   | RTypeParam of string * reason_desc
-  | RMethodCall of string
+  | RMethodCall of string option
   | RParameter of string
   | RRestParameter of string
   | RIdentifier of string
   | RIdentifierAssignment of string
   | RPropertyAssignment of string
-  | RProperty of string
+  | RProperty of string option
   | RShadowProperty of string
   | RPropertyOf of string * reason_desc
   | RPropertyIsAString of string
-  | RMissingProperty of string
-  | RUnknownProperty of string
+  | RMissingProperty of string option
+  | RUnknownProperty of string option
   | RSomeProperty
   | RNameProperty of reason_desc
   | RMissingAbstract of reason_desc
@@ -148,7 +152,6 @@ type reason_desc =
   | RSuperOf of reason_desc
   | RFrozen of reason_desc
   | RBound of reason_desc
-  | RTypeOf of reason_desc
   | RVarianceCheck of reason_desc
   | RPredicateOf of reason_desc
   | RPredicateCall of reason_desc
@@ -181,6 +184,7 @@ type reason_desc =
 and reason_desc_function =
   | RAsync
   | RGenerator
+  | RAsyncGenerator
   | RNormal
 
 type reason = {
@@ -339,6 +343,7 @@ let loc_of_reason r = r.loc
 let function_desc_prefix = function
   | RAsync -> "async "
   | RGenerator -> "generator "
+  | RAsyncGenerator -> "async generator "
   | RNormal -> ""
 
 let rec string_of_desc = function
@@ -368,6 +373,14 @@ let rec string_of_desc = function
   | RFunctionType -> "function type"
   | RFunctionBody -> "function body"
   | RFunctionCall -> "function call"
+  | RJSXFunctionCall raw_jsx -> spf "JSX desugared to `%s(...)`" raw_jsx
+  | RJSXIdentifier (raw_jsx, name) ->
+      spf "JSX desugared to `%s(...)`. identifier %s" raw_jsx name
+  | RJSXElement x ->
+    (match x with
+    | Some x -> spf "JSX element `%s`" x
+    | None -> "JSX element")
+  | RJSXElementProps x -> spf "props of JSX element `%s`" x
   | RAnyObject -> "any object"
   | RAnyFunction -> "any function"
   | RUnknownString -> "some string with unknown value"
@@ -409,16 +422,20 @@ let rec string_of_desc = function
   | RTypeParam (x,d) -> spf "type parameter `%s` of %s" x (string_of_desc d)
   | RIdentifier x -> spf "identifier `%s`" x
   | RIdentifierAssignment x -> spf "assignment of identifier `%s`" x
-  | RMethodCall x -> spf "call of method `%s`" x
+  | RMethodCall (Some x) -> spf "call of method `%s`" x
+  | RMethodCall None -> "call of computed property"
   | RParameter x -> spf "parameter `%s`" x
   | RRestParameter x -> spf "rest parameter `%s`" x
-  | RProperty x -> spf "property `%s`" x
+  | RProperty (Some x) -> spf "property `%s`" x
+  | RProperty None -> "computed property"
   | RPropertyAssignment x -> spf "assignment of property `%s`" x
   | RShadowProperty x -> spf ".%s" x
   | RPropertyOf (x, d) -> spf "property `%s` of %s" x (string_of_desc d)
   | RPropertyIsAString x -> spf "property `%s` is a string" x
-  | RMissingProperty x -> spf "property `%s` does not exist" x
-  | RUnknownProperty x -> spf "property `%s` of unknown type" x
+  | RMissingProperty (Some x) -> spf "property `%s` does not exist" x
+  | RMissingProperty None -> "computed property does not exist"
+  | RUnknownProperty (Some x) -> spf "property `%s` of unknown type" x
+  | RUnknownProperty None -> "computed property of unknown type"
   | RSomeProperty -> "some property"
   | RNameProperty d -> spf "property `name` of %s" (string_of_desc d)
   | RMissingAbstract d ->
@@ -439,7 +456,6 @@ let rec string_of_desc = function
   | RSuperOf d -> spf "super of %s" (string_of_desc d)
   | RFrozen d -> spf "frozen %s" (string_of_desc d)
   | RBound d -> spf "bound %s" (string_of_desc d)
-  | RTypeOf d -> spf "typeof %s" (string_of_desc d)
   | RVarianceCheck d -> spf "variance check: %s" (string_of_desc d)
   | RPredicateOf d -> spf "predicate of %s" (string_of_desc d)
   | RPredicateCall d -> spf "predicate call to %s" (string_of_desc d)
@@ -549,7 +565,7 @@ let is_instantiable_reason r =
 *)
 let is_constant_property_reason r =
   match desc_of_reason r with
-  | RProperty x
+  | RProperty (Some x)
   | RPropertyOf (x,_)
   | RPropertyIsAString x ->
     let len = String.length x in
@@ -560,7 +576,7 @@ let is_constant_property_reason r =
 
 let is_method_call_reason x r =
   match desc_of_reason r with
-  | RMethodCall y -> x = y
+  | RMethodCall (Some y) -> x = y
   | _ -> false
 
 let is_derivable_reason r =

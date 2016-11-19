@@ -14,12 +14,7 @@
  *)
 
 module rec Identifier : sig
-  type t = Loc.t * t'
-  and t' = {
-    name: string;
-    typeAnnotation: Type.annotation option;
-    optional: bool;
-  }
+  type t = Loc.t * string
 end = Identifier
 
 and Literal : sig
@@ -53,7 +48,7 @@ and Type : sig
     module Param : sig
       type t = Loc.t * t'
       and t' = {
-        name: Identifier.t;
+        name: Identifier.t option;
         typeAnnotation: Type.t;
         optional: bool;
       }
@@ -85,7 +80,7 @@ and Type : sig
     end
     module Indexer: sig
       type t' = {
-        id: Identifier.t;
+        id: Identifier.t option;
         key: Type.t;
         value: Type.t;
         static: bool;
@@ -347,13 +342,7 @@ and Statement : sig
       left: left;
       right: Expression.t;
       body: Statement.t;
-    }
-  end
-  module Let : sig
-    type assignment = { id: Pattern.t; init: Expression.t option; }
-    type t = {
-      head: assignment list;
-      body: Statement.t;
+      async: bool;
     }
   end
   module Interface : sig
@@ -368,11 +357,13 @@ and Statement : sig
   module DeclareVariable : sig
     type t = {
       id: Identifier.t;
+      typeAnnotation: Type.annotation option;
     }
   end
   module DeclareFunction : sig
     type t = {
       id: Identifier.t;
+      typeAnnotation: Type.annotation;
       predicate: Type.Predicate.t option;
     }
   end
@@ -498,7 +489,6 @@ and Statement : sig
     | For of For.t
     | ForIn of ForIn.t
     | ForOf of ForOf.t
-    | Let of Let.t
     | Debugger
     | FunctionDeclaration of Function.t
     | VariableDeclaration of VariableDeclaration.t
@@ -737,12 +727,6 @@ and Expression : sig
       filter: Expression.t option;
     }
   end
-  module Let : sig
-    type t = {
-      head: Statement.Let.assignment list;
-      body: Expression.t;
-    }
-  end
   module TypeCast : sig
     type t = {
       expression: Expression.t;
@@ -777,7 +761,6 @@ and Expression : sig
     | Yield of Yield.t
     | Comprehension of Comprehension.t
     | Generator of Generator.t
-    | Let of Let.t
     | Identifier of Identifier.t
     | Literal of Literal.t
     | TemplateLiteral of TemplateLiteral.t
@@ -938,6 +921,13 @@ and Pattern : sig
     type t = {
       left: Pattern.t;
       right: Expression.t;
+    }
+  end
+  module Identifier : sig
+    type t = {
+      name: Identifier.t;
+      typeAnnotation: Type.annotation option;
+      optional: bool;
     }
   end
   type t = Loc.t * t'

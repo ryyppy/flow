@@ -205,6 +205,7 @@ module type S = sig
   val static_dynamic : Pos.t -> Pos.t -> string -> unit
   val null_member : string -> Pos.t -> (Pos.t * string) list -> unit
   val non_object_member : string -> Pos.t -> string -> Pos.t -> unit
+  val ambiguous_member : string -> Pos.t -> string -> Pos.t -> unit
   val null_container : Pos.t -> (Pos.t * string) list -> unit
   val option_mixed : Pos.t -> unit
   val declared_covariant : Pos.t -> Pos.t -> (Pos.t * string) list -> unit
@@ -330,8 +331,8 @@ module type S = sig
   type t
 
   val do_ : (unit -> 'a) -> t * 'a * error_flags
-  val run_in_decl_mode : (unit -> 'a) -> 'a
-  val get_lazy_decl_flag : error_flags -> bool
+  val run_in_decl_mode : Relative_path.t -> (unit -> 'a) -> 'a
+  val get_lazy_decl_flag : error_flags -> Relative_path.t option
   val ignore_ : (unit -> 'a) -> 'a
   val try_when :
     (unit -> 'a) -> when_:(unit -> bool) -> do_:(error -> unit) -> 'a

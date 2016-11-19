@@ -18,11 +18,14 @@ open Env.LookupMode
 
 (* AST helpers *)
 
-let ident_name (_, ident) =
-  ident.Ast.Identifier.name
+let ident_name (_, name) = name
+
+let optional_ident_name = function
+| None -> "_"
+| Some ident -> ident_name ident
 
 let error_type cx loc msg =
-  FlowError.add_error cx (loc, [msg]);
+  FlowError.add_output cx msg;
   AnyT.at loc
 
 let is_suppress_type cx type_name =
@@ -35,8 +38,7 @@ let check_type_param_arity cx loc params n f =
   if num_params = n
   then f ()
   else
-    let msg = spf "Incorrect number of type parameters (expected %n)" n in
-    error_type cx loc msg
+    error_type cx loc (FlowError.ETypeParamArity (loc, n))
 
 let mk_custom_fun cx loc typeParameters kind =
   check_type_param_arity cx loc typeParameters 0 (fun () ->
@@ -91,9 +93,10 @@ let rec convert cx tparams_map = Ast.Type.(function
     }) ->
       let valtype = convert_qualification ~lookup_mode:ForTypeof cx
         "typeof-annotation" qualification in
-      Flow_js.mk_typeof_annotation cx valtype
+      let reason = repos_reason loc (reason_of_t valtype) in
+      Flow_js.mk_typeof_annotation cx reason valtype
   | _ ->
-    error_type cx loc "Unexpected typeof expression"
+    error_type cx loc (FlowError.EUnexpectedTypeof loc)
   end
 
 | loc, Tuple ts ->
@@ -146,10 +149,10 @@ let rec convert cx tparams_map = Ast.Type.(function
        { Generic.Identifier.qualification; id; }); typeParameters } ->
 
   let m = convert_qualification cx "type-annotation" qualification in
-  let _, { Ast.Identifier.name; _ } = id in
+  let _, name = id in
   let reason = mk_reason (RCustom name) loc in
   let t = Flow_js.mk_tvar_where cx reason (fun t ->
-    Flow_js.flow cx (m, GetPropT (reason, (reason, name), t));
+    Flow_js.flow cx (m, GetPropT (reason, Named (reason, name), t));
   ) in
   let typeParameters = extract_type_param_instantiations typeParameters in
   mk_nominal_type cx reason tparams_map (t, typeParameters)
@@ -159,7 +162,7 @@ let rec convert cx tparams_map = Ast.Type.(function
     Generic.id = Generic.Identifier.Unqualified (id);
     typeParameters
   } ->
-  let _, { Ast.Identifier.name; _ } = id in
+  let _, name = id in
   let typeParameters = extract_type_param_instantiations typeParameters in
 
   let convert_type_params () = Option.value_map
@@ -183,8 +186,7 @@ let rec convert cx tparams_map = Ast.Type.(function
       let rep = UnionRep.make t0 t1 ts in
       UnionT (mk_reason RUnionType loc, rep)
     | _ ->
-      let msg = "Incorrect number of type parameters (expected at least 2)" in
-      error_type cx loc msg)
+      error_type cx loc (FlowError.ETypeParamMinArity (loc, 2)))
 
   (* $All<...T> is the intersection of types ...T *)
   | "$All" ->
@@ -193,8 +195,7 @@ let rec convert cx tparams_map = Ast.Type.(function
       let rep = InterRep.make t0 t1 ts in
       IntersectionT (mk_reason RIntersectionType loc, rep)
     | _ ->
-      let msg = "Incorrect number of type parameters (expected at least 2)" in
-      error_type cx loc msg)
+      error_type cx loc (FlowError.ETypeParamMinArity (loc, 2)))
 
   (* $Tuple<...T> is the tuple of types ...T *)
   | "$Tuple" ->
@@ -229,8 +230,8 @@ let rec convert cx tparams_map = Ast.Type.(function
       | [t; SingletonStrT (_, key)] ->
         EvalT (t, TypeDestructorT
           (mk_reason (RCustom "property type") loc, PropertyType key), mk_id())
-      | _ -> error_type cx loc
-        "expected object type and string literal as arguments to $PropertyType"
+      | _ ->
+        error_type cx loc (FlowError.EPropertyTypeAnnot loc)
     )
 
   (* $NonMaybeType<T> acts as the type T without null and void *)
@@ -287,9 +288,7 @@ let rec convert cx tparams_map = Ast.Type.(function
             Flow_js.flow cx (remote_module_t, CJSRequireT(reason, t))
           )
       | _ ->
-          let msg = "$Exports requires a string literal" in
-          FlowError.add_error cx (loc, [msg]);
-          AnyT.t
+          error_type cx loc (FlowError.EExportsAnnot loc)
     )
 
   | "$Abstract" ->
@@ -336,7 +335,7 @@ let rec convert cx tparams_map = Ast.Type.(function
         Flow_js.reposition cx reason (SMap.find_unsafe "this" tparams_map)
       )
     else (
-      FlowError.add_warning cx (loc, ["Unexpected use of `this` type"]);
+      FlowError.(add_output cx (EUnexpectedThisType loc));
       AnyT.t
     )
 
@@ -454,8 +453,8 @@ let rec convert cx tparams_map = Ast.Type.(function
             ~is_predicate:true tout
         )
 
-      | _ -> error_type cx loc "expected number of refined variables\
-              (currently only supporting one variable)"
+      | _ ->
+        error_type cx loc (FlowError.EPredAnnot loc)
     )
 
   | "$Refine" ->
@@ -466,8 +465,8 @@ let rec convert cx tparams_map = Ast.Type.(function
           let reason = mk_reason (RCustom "refined type") loc in
           let pred = LatentP (fun_pred_t, idx) in
           EvalT (base_t, DestructuringT (reason, Refine pred), mk_id())
-      | _ -> error_type cx loc
-        "expected base type and predicate type as arguments to $Refine"
+      | _ ->
+        error_type cx loc (FlowError.ERefineAnnot loc)
     )
 
   (* other applications with id as head expr *)
@@ -488,13 +487,13 @@ let rec convert cx tparams_map = Ast.Type.(function
         let { Function.Param.name; typeAnnotation; optional } = param in
         let t = convert cx tparams_map typeAnnotation in
         let t = if optional then OptionalT t else t in
-        (t :: tlist, ident_name name :: pnames)
+        (t :: tlist, optional_ident_name name :: pnames)
     ) ([], []) params in
     match rest with
       | Some (_, { Function.RestParam.argument = (_, param) }) ->
         let { Function.Param.name; typeAnnotation; _ } = param in
         let rest = mk_rest cx (convert cx tparams_map typeAnnotation) in
-        (rest :: rev_tlist, (ident_name name) :: rev_pnames)
+        (rest :: rev_tlist, (optional_ident_name name) :: rev_pnames)
       | None ->
         rev_tlist, rev_pnames
     in
@@ -524,16 +523,14 @@ let rec convert cx tparams_map = Ast.Type.(function
     match key with
     | Ast.Expression.Object.Property.Literal
         (_, { Ast.Literal.value = Ast.Literal.String name; _ })
-    | Ast.Expression.Object.Property.Identifier
-        (_, { Ast.Identifier.name; _ }) ->
+    | Ast.Expression.Object.Property.Identifier (_, name) ->
         let t = convert cx tparams_map value in
         let t = if optional then OptionalT t else t in
         let polarity = if _method then Positive else polarity variance in
         let p = Field (t, polarity) in
         SMap.add name p props_map
     | _ ->
-      let msg = "Unsupported key in object type" in
-      FlowError.add_error cx (loc, [msg]);
+      FlowError.(add_output cx (EUnsupportedKeyInObjectType loc));
       props_map
   ) SMap.empty properties in
   let props_map =
@@ -557,17 +554,19 @@ let rec convert cx tparams_map = Ast.Type.(function
     match indexers with
     | [] -> true, None
     | (_, { Object.Indexer.id; key; value; variance; _ })::rest ->
-        let _, { Ast.Identifier.name; _ } = id in
+        let dict_name = match id with
+        | Some (_, name) -> Some name
+        | None -> None in
         (* TODO: multiple indexers *)
         List.iter (fun (indexer_loc, _) ->
-          let msg = "multiple indexers are not supported" in
-          FlowError.add_error cx (indexer_loc, [msg]);
+          FlowError.(add_output cx
+            (EUnsupportedSyntax (indexer_loc, MultipleIndexers)))
         ) rest;
         let keyt = convert cx tparams_map key in
         let valuet = convert cx tparams_map value in
         false,
         Some { Type.
-          dict_name = Some name;
+          dict_name;
           key = keyt;
           value = valuet;
           dict_polarity = polarity variance;
@@ -577,7 +576,7 @@ let rec convert cx tparams_map = Ast.Type.(function
      and use the root proto reason to build an error. *)
   let reason_desc = RObjectType in
   let pmap = Context.make_property_map cx props_map in
-  let proto = MixedT (locationless_reason reason_desc, Mixed_everything) in
+  let proto = ObjProtoT (locationless_reason reason_desc) in
   let flags = {
     sealed = if sealed then Sealed else UnsealedInFile (Loc.source loc);
     exact = not sealed || exact;
@@ -603,15 +602,14 @@ and convert_qualification ?(lookup_mode=ForType) cx reason_prefix
   = Ast.Type.Generic.Identifier.(function
   | Qualified (loc, { qualification; id; }) ->
     let m = convert_qualification ~lookup_mode cx reason_prefix qualification in
-    let _, { Ast.Identifier.name; _ } = id in
+    let name = ident_name id in
     let desc = RCustom (spf "%s '<<object>>.%s')" reason_prefix name) in
     let reason = mk_reason desc loc in
     Flow_js.mk_tvar_where cx reason (fun t ->
-      Flow_js.flow cx (m, GetPropT (reason, (reason, name), t));
+      Flow_js.flow cx (m, GetPropT (reason, Named (reason, name), t));
     )
 
-  | Unqualified (id) ->
-    let loc, { Ast.Identifier.name; _ } = id in
+  | Unqualified (loc, name) ->
     let desc = RCustom (spf "%s `%s`" reason_prefix name) in
     let reason = mk_reason desc loc in
     Env.get_var ~lookup_mode cx name reason
@@ -636,9 +634,7 @@ and mk_rest cx = function
       RestT tvar
   | t ->
       let r = reason_of_t t in
-      let msg =
-        "rest parameter should have an explicit array type (or type `any`)" in
-      FlowError.(add_warning cx (mk_info r [msg]));
+      FlowError.(add_output cx (EInvalidRestParam r));
       RestT (AnyT.why r)
 
 and mk_type cx tparams_map reason = function
@@ -713,11 +709,7 @@ and mk_type_param_declarations cx ?(tparams_map=SMap.empty) typeParameters =
         Flow_js.flow_t cx (Flow_js.subst cx bounds_map t,
                            Flow_js.subst cx bounds_map bound);
         Some t in
-    let polarity = Ast.Variance.(match variance with
-    | Some (_, Plus) -> Positive
-    | Some (_, Minus) -> Negative
-    | None -> Neutral
-    ) in
+    let polarity = polarity variance in
     let tparam = { reason; name; bound; polarity; default; } in
     (tparam :: tparams,
      SMap.add name (BoundT tparam) tparams_map,

@@ -36,9 +36,7 @@ export default suite(({addFile, addFiles, addCode}) => [
         `
           test.js:9
             9: var boom = myNum * myStr;
-                                  ^^^^^ string. This type is incompatible with
-            9: var boom = myNum * myStr;
-                          ^^^^^^^^^^^^^ number
+                                  ^^^^^ string. The operand of an arithmetic operation must be a number.
         `,
       )
   ]),
@@ -62,7 +60,7 @@ export default suite(({addFile, addFiles, addCode}) => [
 
     // Directories are automatically created when you add files to them
     addFile('B.js', 'some/dir/E.js')
-      .addCode('import D from "./some/dir/E"')
+      .addCode('import E from "./some/dir/E"')
       .noNewErrors(),
   ]),
 

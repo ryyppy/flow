@@ -54,9 +54,9 @@ let gen_imports env =
         match spec with
         | ImportNamedSpecifier s ->
           (s::named, default, ns)
-        | ImportDefaultSpecifier (_, {Identifier.name; _;}) ->
+        | ImportDefaultSpecifier (_, name) ->
           (named, Some name, ns)
-        | ImportNamespaceSpecifier (_, (_, {Identifier.name; _;})) ->
+        | ImportNamespaceSpecifier (_, (_, name)) ->
           (named, default, Some name)
       ) ([], None, None) specifiers
     in
@@ -96,9 +96,9 @@ let gen_imports env =
       let env = Codegen.add_str "{" env in
       let env =
         Codegen.gen_separated_list named ", " (fun {local; remote} env ->
-          let (_, {Identifier.name = remote; _;}) = remote in
+          let (_, remote) = remote in
           match local with
-          | Some (_, {Identifier.name = local; _;}) when local <> remote ->
+          | Some (_, local) when local <> remote ->
             Codegen.add_str remote env
               |> Codegen.add_str " as "
               |> Codegen.add_str local
@@ -244,9 +244,9 @@ class unexported_class_visitor = object(self)
 
         let env =
           match resolve_type extends env with
-          | MixedT _ -> env
+          | ObjProtoT _ -> env
           | ClassT t when (
-              match resolve_type t env with | MixedT _ -> true | _ -> false
+              match resolve_type t env with | ObjProtoT _ -> true | _ -> false
             ) -> env
           | ThisTypeAppT (extends, _, ts) ->
             add_str " extends " env
@@ -352,7 +352,7 @@ let gen_named_exports =
         let env = gen_tparams_list env in
         let env = (
           match Codegen.resolve_type super env with
-          | MixedT _ -> env
+          | ObjProtoT _ -> env
           | (ThisTypeAppT _) as t -> add_str " extends " env |> gen_type t
           | _ -> failwith (
             spf "Unexpected super type for class: %s" (string_of_ctor super)

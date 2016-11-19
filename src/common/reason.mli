@@ -30,6 +30,10 @@ type reason_desc =
   | RFunctionType
   | RFunctionBody
   | RFunctionCall
+  | RJSXFunctionCall of string
+  | RJSXIdentifier of string * string
+  | RJSXElementProps of string
+  | RJSXElement of string option
   | RAnyObject
   | RAnyFunction
   | RUnknownString
@@ -68,18 +72,18 @@ type reason_desc =
   | RObjectMapi
   | RType of string
   | RTypeParam of string * reason_desc
-  | RMethodCall of string
+  | RMethodCall of string option
   | RParameter of string
   | RRestParameter of string
   | RIdentifier of string
   | RIdentifierAssignment of string
   | RPropertyAssignment of string
-  | RProperty of string
+  | RProperty of string option
   | RShadowProperty of string
   | RPropertyOf of string * reason_desc
   | RPropertyIsAString of string
-  | RMissingProperty of string
-  | RUnknownProperty of string
+  | RMissingProperty of string option
+  | RUnknownProperty of string option
   | RSomeProperty
   | RNameProperty of reason_desc
   | RMissingAbstract of reason_desc
@@ -99,7 +103,6 @@ type reason_desc =
   | RSuperOf of reason_desc
   | RFrozen of reason_desc
   | RBound of reason_desc
-  | RTypeOf of reason_desc
   | RVarianceCheck of reason_desc
   | RPredicateOf of reason_desc
   | RPredicateCall of reason_desc
@@ -132,6 +135,7 @@ type reason_desc =
 and reason_desc_function =
   | RAsync
   | RGenerator
+  | RAsyncGenerator
   | RNormal
 
 type reason

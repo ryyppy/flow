@@ -30,10 +30,10 @@ exception Read_payload_too_long
 
 let debug = false
 
-let sync_file_extension = "tmp_sync"
+(** This number is totally arbitrary. Just need some cap. *)
+let max_reinit_attempts = 8
 
-(** TODO: support git. *)
-let vcs_tmp_dir = ".hg"
+let sync_file_extension = "tmp_sync"
 
 let crash_marker_path root =
   let root_name = Path.slash_escaped_string_of_path root in
@@ -43,6 +43,7 @@ type init_settings = {
   subscribe_to_changes: bool;
   (** Seconds used for init timeout - will be reused for reinitialization. *)
   init_timeout: int;
+  sync_directory: string;
   root: Path.t;
 }
 
@@ -51,6 +52,7 @@ type dead_env = {
   prior_settings : init_settings;
   reinit_attempts: int;
   dead_since: float;
+  prior_clockspec : string;
 }
 
 type env = {
@@ -58,7 +60,12 @@ type env = {
   socket: Timeout.in_channel * out_channel;
   watch_root: string;
   relative_path: string;
-  (* See https://facebook.github.io/watchman/docs/clockspec.html *)
+  (* See https://facebook.github.io/watchman/docs/clockspec.html
+   *
+   * This is also used to reliably detect a crashed watchman. Watchman has a
+   * facility to detect watchman process crashes between two "since" queries
+   *
+   * See also assert_no_fresh_instance *)
   mutable clockspec: string;
 }
 
@@ -67,17 +74,29 @@ let dead_env_from_alive env =
     prior_settings = env.settings;
     dead_since = Unix.time ();
     reinit_attempts = 0;
+    (** When we start a new watchman connection, we continue to use the prior
+     * clockspec. If the same watchman server is still alive, then all is good.
+     * If not, the clockspec allows us to detect whether a new watchman
+     * server had to be started. See also "is_fresh_instance" on watchman's
+     * "since" response. *)
+    prior_clockspec = env.clockspec;
   }
 
-type 'a changes =
+type pushed_changes =
+  (** State name and metadata. *)
+  | State_enter of string * Hh_json.json option
+  | State_leave of string * Hh_json.json option
+  | Files_changed of SSet.t
+
+type changes =
   | Watchman_unavailable
-  | Watchman_pushed of 'a
-  | Watchman_synchronous of 'a
+  | Watchman_pushed of pushed_changes
+  | Watchman_synchronous of SSet.t
 
 type watchman_instance =
   (** Indicates a dead watchman instance (most likely due to chef upgrading,
-   * reconfiguration, or a user terminating watchman) detected by,
-   * for example, a pipe error.
+   * reconfiguration, or a user terminating watchman, or a timeout reading
+   * from the connection) detected by, for example, a pipe error or a timeout.
    *
    * TODO: Currently fallback to a Watchman_dead is only handled in calls
    * wrapped by the with_crash_record. Pipe errors elsewhere (for example
@@ -89,6 +108,10 @@ type watchman_instance =
 let get_root_path instance = match instance with
   | Watchman_dead dead_env -> dead_env.prior_settings.root
   | Watchman_alive env -> env.settings.root
+
+let get_sync_dir instance = match instance with
+  | Watchman_dead dead_env -> dead_env.prior_settings.sync_directory
+  | Watchman_alive env -> env.settings.sync_directory
 
 (* Some JSON processing helpers *)
 module J = struct
@@ -187,12 +210,15 @@ let all_query env =
 
 let since_query env =
   request_json
-    ~extra_kv: ["since", Hh_json.JSON_String env.clockspec]
+    ~extra_kv: ["since", Hh_json.JSON_String env.clockspec;
+                "empty_on_fresh_instance", Hh_json.JSON_Bool true]
     Query env
 
 let subscribe env = request_json
                       ~extra_kv:["since", Hh_json.JSON_String env.clockspec ;
-                                 "defer", J.strlist ["hg.update"]]
+                                 "defer", J.strlist ["hg.update"] ;
+                                 "empty_on_fresh_instance",
+                                 Hh_json.JSON_Bool true]
                       Subscribe env
 
 let watch_project root = J.strlist ["watch-project"; root]
@@ -230,6 +256,24 @@ let read_with_timeout timeout ic =
       EventLogger.watchman_timeout ();
       raise Timeout
 
+(** We filter all responses from get_changes through this. This is to detect
+ * Watchman server crashes.
+ *
+ * See also Watchman docs on "since" query parameter. *)
+let assert_no_fresh_instance obj =
+  let open Hh_json.Access in
+  let _ = (return obj)
+    >>= get_bool "is_fresh_instance"
+    >>= (fun (is_fresh, trace) ->
+     if is_fresh then begin
+       Hh_logger.log "Watchman server is fresh instance. Exiting.";
+       Exit_status.(exit Watchman_fresh_instance)
+     end
+     else
+       Result.Ok ((), trace)
+    ) in
+  ()
+
 let assert_no_error obj =
   (try
      let warning = J.get_string_val "warning" obj in
@@ -265,6 +309,8 @@ let exec ?(timeout=120.0) (ic, oc) json =
 (* Initialization, reinitialization, and crash-tracking. *)
 (*****************************************************************************)
 
+exception Watchman_sync_directory_error
+
 let get_sockname timeout =
   let ic =
     Timeout.open_process_in "watchman"
@@ -273,6 +319,22 @@ let get_sockname timeout =
   assert (Timeout.close_process_in ic = Unix.WEXITED 0);
   let json = Hh_json.json_of_string output in
   J.get_string_val "sockname" json
+
+let assert_sync_dir_exists path =
+  let stats = try Unix.stat path with
+    | Unix.Unix_error (Unix.ENOENT, _, _) ->
+      Hh_logger.log "Watchman sync directory doesn't exist: %s" path;
+      raise Watchman_sync_directory_error
+  in
+  let () = if stats.Unix.st_kind <> Unix.S_DIR then begin
+    Hh_logger.log "Watchman sync directory is not a directory: %s" path;
+    raise Watchman_sync_directory_error
+  end
+  else () in
+  try Unix.access path [Unix.R_OK; Unix.W_OK] with
+  | Unix.Unix_error (Unix.EACCES, _, _) ->
+    Hh_logger.log "Dont have read-write access to watchman sync directory: %s" path;
+    raise Watchman_sync_directory_error
 
 let with_crash_record_exn root source f =
   try f ()
@@ -284,22 +346,27 @@ let with_crash_record_exn root source f =
 let with_crash_record_opt root source f =
   Option.try_with (fun () -> with_crash_record_exn root source f)
 
-let init { init_timeout; subscribe_to_changes; root } =
+let re_init ?prior_clockspec
+  { init_timeout; subscribe_to_changes; sync_directory; root } =
   with_crash_record_opt root "init" @@ fun () ->
   let root_s = Path.to_string root in
   let sockname = get_sockname init_timeout in
+  assert_sync_dir_exists (Filename.concat root_s sync_directory);
   let socket = Timeout.open_connection (Unix.ADDR_UNIX sockname) in
   ignore @@ exec socket (capability_check ["relative_root"]);
   let response = exec socket (watch_project root_s) in
   let watch_root = J.get_string_val "watch" response in
   let relative_path = J.get_string_val "relative_path" ~default:"" response in
 
-  let clockspec =
-    exec socket (clock watch_root) |> J.get_string_val "clock" in
+  let clockspec = match prior_clockspec with
+    | Some s -> s
+    | None -> exec socket (clock watch_root) |> J.get_string_val "clock"
+  in
   let env = {
     settings = {
       init_timeout;
       subscribe_to_changes;
+      sync_directory;
       root;
     };
     socket;
@@ -309,6 +376,8 @@ let init { init_timeout; subscribe_to_changes; root } =
   } in
   if subscribe_to_changes then (ignore @@ exec env.socket (subscribe env)) ;
   env
+
+let init settings = re_init settings
 
 let has_input timeout (in_channel, _) =
   let fd = Timeout.descr_of_in_channel in_channel in
@@ -347,7 +416,11 @@ let poll_for_updates ?timeout env =
     raise e
 
 let extract_file_names env json =
-  let files = J.get_array_val "files" json in
+  let files = try J.get_array_val "files" json with
+    (** When an hg.update happens, it shows up in the watchman subscription
+     * as a notification with no files key present. *)
+    | Not_found -> []
+  in
   let files = List.map files begin fun json ->
     let s = Hh_json.get_string_exn json in
     let abs =
@@ -364,10 +437,14 @@ let within_backoff_time attempts time =
 let maybe_restart_instance instance = match instance with
   | Watchman_alive _ -> instance
   | Watchman_dead dead_env ->
-    if within_backoff_time dead_env.reinit_attempts dead_env.dead_since then
+    if dead_env.reinit_attempts >= max_reinit_attempts then
+      let () = Hh_logger.log "Ran out of watchman reinit attempts. Exiting." in
+      Exit_status.(exit Watchman_failed)
+    else if within_backoff_time dead_env.reinit_attempts dead_env.dead_since then
       let () =
         Hh_logger.log "Attemping to reestablish watchman subscription" in
-      match init dead_env.prior_settings with
+      match re_init ~prior_clockspec:dead_env.prior_clockspec
+        dead_env.prior_settings with
       | None ->
         Hh_logger.log "Reestablishing watchman subscription failed.";
         EventLogger.watchman_connection_reestablishment_failed ();
@@ -400,14 +477,27 @@ let call_on_instance instance source f =
     instance, Watchman_unavailable
   | Watchman_alive env -> begin
     try
-      instance, with_crash_record_exn env.settings.root source (fun () -> f env)
+      let env, result = with_crash_record_exn
+        env.settings.root source (fun () -> f env) in
+      Watchman_alive env, result
     with
       | Sys_error("Broken pipe") ->
         Hh_logger.log "Watchman Pipe broken.";
-        EventLogger.watchman_died_caught ();
-        Watchman_dead (dead_env_from_alive env), Watchman_unavailable
+        close_channel_on_instance env
       | Sys_error("Connection reset by peer") ->
         Hh_logger.log "Watchman connection reset by peer.";
+        close_channel_on_instance env
+      | Sys_error("Bad file descriptor") ->
+        (** This happens when watchman is tearing itself down after we
+         * retrieved a sock address and connected to the sock address. That's
+         * because Unix.open_connection (via Timeout.open_connection) doesn't
+         * error even when the sock adddress is no longer valid and actually -
+         * it returns a channel that will error at some later time when you
+         * actually try to do anything with it (write to it, or even get the
+         * file descriptor of it). I'm pretty sure we don't need to close the
+         * channel when that happens since we never had a useable channel
+         * to start with. *)
+        Hh_logger.log "Watchman bad file descriptor.";
         EventLogger.watchman_died_caught ();
         Watchman_dead (dead_env_from_alive env), Watchman_unavailable
       | End_of_file ->
@@ -418,6 +508,9 @@ let call_on_instance instance source f =
         close_channel_on_instance env
       | Timeout ->
         Hh_logger.log "Watchman reading Timeout. Closing channel";
+        close_channel_on_instance env
+      | Watchman_error msg ->
+        Hh_logger.log "Watchman error: %s. Closing channel" msg;
         close_channel_on_instance env
       | e ->
         let msg = Printexc.to_string e in
@@ -433,13 +526,33 @@ let get_all_files env =
     | _ ->
       Exit_status.(exit Watchman_failed)
 
-let transform_changes_response env data =
-    env.clockspec <- J.get_string_val "clock" data;
-    set_of_list @@ extract_file_names env data
+let transform_synchronous_get_changes_response env data =
+  env.clockspec <- J.get_string_val "clock" data;
+  assert_no_fresh_instance data;
+  env, set_of_list @@ extract_file_names env data
 
-let random_filepath root =
+let make_state_change_response state name data =
+  let metadata = J.try_get_val "metadata" data in
+  match state with
+  | `Enter ->
+    State_enter (name, metadata)
+  | `Leave ->
+    State_leave (name, metadata)
+
+let transform_asynchronous_get_changes_response env data =
+  env.clockspec <- J.get_string_val "clock" data;
+  assert_no_fresh_instance data;
+  try env, make_state_change_response `Enter
+    (J.get_string_val "state-enter" data) data with
+  | Not_found ->
+  try env, make_state_change_response `Leave
+    (J.get_string_val "state-leave" data) data with
+  | Not_found ->
+    env, Files_changed (set_of_list @@ extract_file_names env data)
+
+let random_filepath root sync_dir =
   let root_name = Path.to_string root in
-  let dir = Filename.concat root_name vcs_tmp_dir in
+  let dir = Filename.concat root_name sync_dir in
   let name = Random_id.(short_string_with_alphabet alphanumeric_alphabet) in
   Filename.concat dir (spf ".%s.%s" name sync_file_extension)
 
@@ -449,17 +562,15 @@ let get_changes ?deadline instance =
     max timeout 0.0
   ) in
   call_on_instance instance "get_changes" @@ fun env ->
-    let response = begin
-        if env.settings.subscribe_to_changes
-        then Watchman_pushed (poll_for_updates ?timeout env)
-        else Watchman_synchronous (exec ?timeout env.socket (since_query env))
-    end in
-    match response with
-    | Watchman_unavailable -> Watchman_unavailable
-    | Watchman_pushed data ->
-      Watchman_pushed (transform_changes_response env data)
-    | Watchman_synchronous data ->
-      Watchman_synchronous (transform_changes_response env data)
+    if env.settings.subscribe_to_changes
+    then
+      let env, result = transform_asynchronous_get_changes_response
+        env (poll_for_updates ?timeout env) in
+      env, Watchman_pushed result
+    else
+      let env, result = transform_synchronous_get_changes_response
+        env (exec ?timeout env.socket (since_query env)) in
+      env, Watchman_synchronous result
 
 let rec get_changes_until_file_sync deadline syncfile instance acc_changes =
   if Unix.time () >= deadline then raise Timeout else ();
@@ -472,12 +583,16 @@ let rec get_changes_until_file_sync deadline syncfile instance acc_changes =
     get_changes_until_file_sync
       deadline syncfile instance acc_changes (** Not in 4.01 yet [@tailcall] *)
   | Watchman_synchronous changes
-  | Watchman_pushed changes ->
+  | Watchman_pushed (Files_changed changes) ->
     let acc_changes = SSet.union acc_changes changes in
     if SSet.mem syncfile changes then
       instance, acc_changes
     else
       get_changes_until_file_sync deadline syncfile instance acc_changes
+  | Watchman_pushed (State_enter _)
+  | Watchman_pushed (State_leave _) ->
+    (** TODO: Add these enter and exit events to the synchronous response. *)
+    get_changes_until_file_sync deadline syncfile instance acc_changes
 
 (** Raise this exception together with a with_retries_until_deadline call to
  * make use of its exponential backoff machinery. *)
@@ -487,16 +602,21 @@ exception Retry_with_backoff_exception
  * before f and deleted after f. *)
 let with_random_temp_file instance f =
   let root = get_root_path instance in
-  let temp_file = random_filepath root in
-  let ic = try Some ( open_out_gen [Open_creat; Open_excl] 555 temp_file) with
-    | _ -> None
+  let temp_file = random_filepath root (get_sync_dir instance) in
+  let fd = try Some (
+    Unix.openfile temp_file [Unix.O_CREAT; Unix.O_EXCL] 555)
+    with
+    | e ->
+      let () = Hh_logger.log "Creating watchman sync file failed: %s"
+        (Printexc.to_string e) in
+      None
   in
-  match ic with
+  match fd with
   | None ->
     (** Failed to create temp file. Retry with exponential backoff. *)
     raise Retry_with_backoff_exception
-  | Some ic ->
-    let () = close_out ic in
+  | Some fd ->
+    let () = Unix.close fd in
     let result = f instance temp_file in
     let () = Sys.remove temp_file in
     result
@@ -530,3 +650,29 @@ let get_changes_synchronously ~(timeout:int) instance =
         result
       end
   end
+
+module type Testing_sig = sig
+  val test_env : env
+  val transform_asynchronous_get_changes_response :
+    env -> Hh_json.json -> env * pushed_changes
+end
+
+module Testing = struct
+  let test_settings = {
+    subscribe_to_changes = true;
+    init_timeout = 0;
+    sync_directory = "";
+    root = Path.dummy_path;
+  }
+
+  let test_env = {
+    settings = test_settings;
+    socket = (Timeout.open_in "/dev/null", open_out "/dev/null");
+    watch_root = "";
+    relative_path = "";
+    clockspec = "";
+  }
+
+  let transform_asynchronous_get_changes_response env json =
+    transform_asynchronous_get_changes_response env json
+end

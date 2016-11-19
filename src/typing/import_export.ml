@@ -12,7 +12,6 @@
 
 module Ast = Spider_monkey_ast
 module Flow = Flow_js
-module FlowError = Flow_error
 
 open Utils_js
 open Reason
@@ -69,15 +68,11 @@ let mk_resource_module_t cx loc f =
 
 (* given a module name, return associated tvar if already
  * present in module map, or create and add *)
-let get_module_t cx m reason =
-  match Context.declare_module_t cx with
-  | None -> (
-    match SMap.get m (Context.module_map cx) with
-    | Some t -> t
-    | None ->
-      Flow.mk_tvar_where cx reason (fun t -> Context.add_module cx m t)
-    )
+let module_t_of_name cx m reason =
+  match SMap.get m (Context.module_map cx) with
   | Some t -> t
+  | None ->
+    Flow.mk_tvar_where cx reason (fun t -> Context.add_module cx m t)
 
 let require cx ?(internal=false) m_name loc =
   Context.add_require cx m_name loc;
@@ -87,7 +82,7 @@ let require cx ?(internal=false) m_name loc =
   let reason = mk_reason desc loc in
   Flow.mk_tvar_where cx reason (fun t ->
     Flow.flow cx (
-      get_module_t cx m_name (mk_reason (RCustom m_name) loc),
+      module_t_of_name cx m_name (mk_reason (RCustom m_name) loc),
       CJSRequireT(reason, t)
     )
   )
@@ -100,22 +95,25 @@ let import ?reason cx m_name loc =
     | Some r -> r
     | None -> mk_reason (RCustom m_name) loc
   in
-  get_module_t cx m_name reason
+  module_t_of_name cx m_name reason
 
 let import_ns cx reason module_name loc =
   Context.add_require cx module_name loc;
   Type_inference_hooks_js.dispatch_import_hook cx module_name loc;
   Flow.mk_tvar_where cx reason (fun t ->
     Flow.flow cx (
-      get_module_t cx module_name (mk_reason (RCustom module_name) loc),
+      module_t_of_name cx module_name (mk_reason (RCustom module_name) loc),
       ImportModuleNsT(reason, t)
     )
   )
 
-let exports cx =
-  let m = Modulename.to_string (Context.module_name cx) in
-  let loc = Loc.({ none with source = Some (Context.file cx) }) in
-  get_module_t cx m (Reason.mk_reason (RCustom "exports") loc)
+let module_t_of_cx cx =
+  match Context.declare_module_t cx with
+  | None ->
+    let m = Modulename.to_string (Context.module_name cx) in
+    let loc = Loc.({ none with source = Some (Context.file cx) }) in
+    module_t_of_name cx m (Reason.mk_reason (RCustom "exports") loc)
+  | Some t -> t
 
 let set_module_t cx reason f =
   match Context.declare_module_t cx with
@@ -148,19 +146,15 @@ let set_module_t cx reason f =
  * `exports` value? Do we use the type that clobbered `module.exports`? Or do we
  * use neither because the module only has direct ES exports?).
  *)
-let mark_exports_type cx reason new_exports_type = Context.(
-  (match (Context.module_exports_type cx, new_exports_type) with
+let set_module_kind cx reason new_exports_kind = Context.(
+  (match (Context.module_kind cx, new_exports_kind) with
   | (ESModule, CommonJSModule(Some _))
   | (CommonJSModule(Some _), ESModule)
     ->
-      let msg =
-        "Unable to determine module type (CommonJS vs ES) if both an export " ^
-        "statement and module.exports are used in the same module!"
-      in
-      FlowError.(add_warning cx (mk_info reason [msg]))
+      Flow_error.(add_output cx (EIndeterminateModuleType reason))
   | _ -> ()
   );
-  Context.set_module_exports_type cx new_exports_type
+  Context.set_module_kind cx new_exports_kind
 )
 
 (**
@@ -174,11 +168,7 @@ let nameify_default_export_decl decl = Ast.Statement.(
     if func_decl.id <> None then decl else
       loc, FunctionDeclaration {
         func_decl with
-          id = Some (loc, {
-            Ast.Identifier.name = internal_name "*default*";
-            typeAnnotation = None;
-            optional = false;
-          });
+          id = Some (loc, internal_name "*default*");
       }
     )
 
@@ -186,11 +176,7 @@ let nameify_default_export_decl decl = Ast.Statement.(
     if class_decl.id <> None then decl else
       loc, ClassDeclaration {
         class_decl with
-          id = Some (loc, {
-            Ast.Identifier.name = internal_name "*default*";
-            typeAnnotation = None;
-            optional = false;
-          });
+          id = Some (loc, internal_name "*default*");
       }
     )
 
@@ -201,13 +187,7 @@ let warn_or_ignore_export_star_as cx name =
   if name = None then () else
   match Context.esproposal_export_star_as cx, name with
   | Options.ESPROPOSAL_WARN, Some(loc, _) ->
-    FlowError.add_warning cx (loc, [
-      "Experimental `export * as` usage";
-      "`export * as` is an active early stage feature proposal that may " ^
-        "change. You may opt-in to using it anyway by putting " ^
-        "`esproposal.export_star_as=enable` into the [options] section " ^
-        "of your .flowconfig"
-    ])
+    Flow_error.(add_output cx (EExperimentalExportStarAs loc))
   | _ -> ()
 
 (* Module exports are treated differently than `exports`. The latter is a

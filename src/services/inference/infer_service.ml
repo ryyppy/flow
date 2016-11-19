@@ -16,6 +16,8 @@ let rev_append_triple (x1, y1, z1) (x2, y2, z2) =
 let apply_docblock_overrides metadata docblock_info =
   let open Context in
 
+  let metadata = { metadata with jsx = Docblock.jsx docblock_info } in
+
   let metadata = match Docblock.flow docblock_info with
   | None -> metadata
   | Some Docblock.OptIn -> { metadata with checked = true; }
@@ -73,10 +75,10 @@ let infer_job ~options (inferred, errsets, errsuppressions) files =
       )
     with
     (* Unrecoverable exceptions *)
-    | SharedMem.Out_of_shared_memory
-    | SharedMem.Heap_full
-    | SharedMem.Hash_table_full
-    | SharedMem.Dep_table_full as exc -> raise exc
+    | SharedMem_js.Out_of_shared_memory
+    | SharedMem_js.Heap_full
+    | SharedMem_js.Hash_table_full
+    | SharedMem_js.Dep_table_full as exc -> raise exc
     (* A catch all suppression is probably a bad idea... *)
     | exc ->
       let msg = "infer_job exception: "^(fmt_exc exc) in

@@ -1,8 +1,6 @@
 issue-1462-i.js:21
  21:   print(val.foo);  // <--- foo could be an array
-       ^^^^^^^^^^^^^^ function call
- 21:   print(val.foo);  // <--- foo could be an array
-             ^^^^^^^ array type. This type is incompatible with
+             ^^^^^^^ array type. This type is incompatible with the expected param type of
  16: function print(x: number) {
                        ^^^^^^ number
 
@@ -174,15 +172,11 @@ test16.js:14
 
 test17.js:7
   7: ([].concat([0,1])[1]: string)
-      ^^^^^^^^^^^^^^^^ call of method `concat`
-  7: ([].concat([0,1])[1]: string)
                  ^ number. This type is incompatible with
   7: ([].concat([0,1])[1]: string)
                            ^^^^^^ string
 
 test17.js:7
-  7: ([].concat([0,1])[1]: string)
-      ^^^^^^^^^^^^^^^^ call of method `concat`
   7: ([].concat([0,1])[1]: string)
                    ^ number. This type is incompatible with
   7: ([].concat([0,1])[1]: string)
@@ -190,13 +184,11 @@ test17.js:7
 
 test20.js:14
  14: [""].reduce((acc,str) => acc * str.length);
-                              ^^^ string. This type is incompatible with
- 14: [""].reduce((acc,str) => acc * str.length);
-                              ^^^^^^^^^^^^^^^^ number
+                              ^^^ string. The operand of an arithmetic operation must be a number.
 
 test20.js:14
  14: [""].reduce((acc,str) => acc * str.length);
-                              ^^^^^^^^^^^^^^^^ number. This type is incompatible with
+                              ^^^^^^^^^^^^^^^^ number. This type is incompatible with the expected param type of
  14: [""].reduce((acc,str) => acc * str.length);
       ^^ string
 
@@ -249,7 +241,7 @@ test26.js:20
          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function type
   Error:
    20: new Record().set('foo', "42");
-                               ^^^^ string. This type is incompatible with
+                               ^^^^ string. This type is incompatible with the expected param type of
    16:   set(x: 'foo', y: number): void;
                           ^^^^^^ number
   Member 2:
@@ -308,21 +300,13 @@ test5.js:25
    24: var a2 = [];
                 ^^ unknown element type of empty array
 
-test9.js:16
- 16: foo((x): number => square(x))
-     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function call
+test9.js:12
  12:   return x * x;
-              ^ null. This type is incompatible with
- 12:   return x * x;
-              ^^^^^ number
+              ^ null. The operand of an arithmetic operation must be a number.
 
-test9.js:16
- 16: foo((x): number => square(x))
-     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function call
+test9.js:12
  12:   return x * x;
-                  ^ null. This type is incompatible with
- 12:   return x * x;
-              ^^^^^ number
+                  ^ null. The operand of an arithmetic operation must be a number.
 
 
 Found 23 errors

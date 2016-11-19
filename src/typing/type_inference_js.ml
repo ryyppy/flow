@@ -43,13 +43,11 @@ let infer_core cx statements =
     ()
   | Abnormal.Exn _ ->
     (* should never happen *)
-    let msg = "abnormal control flow" in
-    FlowError.add_warning cx
-      (Loc.({ none with source = Some (Context.file cx) }), [msg])
+    let loc = Loc.({ none with source = Some (Context.file cx) }) in
+    FlowError.(add_output cx (EInternal (loc, AbnormalControlFlow)))
   | exc ->
-    let msg = Utils.fmt_exc exc in
-    FlowError.add_warning cx
-      (Loc.({ none with source = Some (Context.file cx) }), [msg])
+    let loc = Loc.({ none with source = Some (Context.file cx) }) in
+    FlowError.(add_output cx (EInternal (loc, UncaughtException exc)))
 
 (* There's a .flowconfig option to specify suppress_comments regexes. Any
  * comments that match those regexes will suppress any errors on the next line
@@ -117,11 +115,10 @@ let infer_ast ~metadata ~filename ~module_name ast =
     none with source = Some filename
   }) in
 
+  let initial_module_t = ImpExp.module_t_of_cx cx in
   if checked then (
     let init_exports = Flow.mk_object cx reason in
     ImpExp.set_module_exports cx reason init_exports;
-
-    let initial_module_t = ImpExp.exports cx in
 
     (* infer *)
     Flow_js.flow_t cx (init_exports, local_exports_var);
@@ -130,7 +127,7 @@ let infer_ast ~metadata ~filename ~module_name ast =
     scan_for_suppressions cx comments;
 
     let module_t = Context.(
-      match Context.module_exports_type cx with
+      match Context.module_kind cx with
       (* CommonJS with a clobbered module.exports *)
       | CommonJSModule(Some(loc)) ->
         let module_exports_t = ImpExp.get_module_exports cx reason in
@@ -148,7 +145,7 @@ let infer_ast ~metadata ~filename ~module_name ast =
     ) in
     Flow_js.flow_t cx (module_t, initial_module_t)
   ) else (
-    Flow_js.unify cx (ImpExp.exports cx) Type.AnyT.t
+    Flow_js.unify cx initial_module_t Type.AnyT.t
   );
 
   (* insist that whatever type flows into exports is fully annotated *)

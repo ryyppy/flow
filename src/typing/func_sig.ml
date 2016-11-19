@@ -1,3 +1,13 @@
+(**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the "flow" directory of this source tree. An additional grant
+ * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ *)
+
 module Ast = Spider_monkey_ast
 module Anno = Type_annotation
 module Flow = Flow_js
@@ -9,6 +19,7 @@ type kind =
   | Ordinary
   | Async
   | Generator
+  | AsyncGenerator
   | FieldInit of Ast.Expression.t
   | Predicate
 
@@ -31,7 +42,7 @@ let return_loc =
 
 let function_kind {Ast.Function.async; generator; predicate; _ } =
   Ast.Type.Predicate.(match async, generator, predicate with
-  | true, true, None -> Utils_js.assert_false "async && generator"
+  | true, true, None -> AsyncGenerator
   | true, false, None -> Async
   | false, true, None -> Generator
   | false, false, None -> Ordinary
@@ -59,8 +70,8 @@ let mk cx tparams_map ~expr reason func =
         Flow.flow_t cx (fresh_t, return_t);
         fresh_t
     | Some (loc, Declared _) ->
-        Flow_error.add_error cx (loc,
-          ["Cannot declare predicate when a function body is present."]);
+        Flow_error.(add_output cx
+          (EUnsupportedSyntax (loc, PredicateDeclarationForImplementation)));
         Anno.mk_type_annotation cx tparams_map reason None
   ) in
   {reason; kind; tparams; tparams_map; params; body; return_t}
@@ -175,15 +186,12 @@ let methodtype_DEPRECATED {reason; params; return_t; _} =
     Flow.mk_functiontype params_tlist ~params_names return_t ~frame
   )
 
-let gettertype x =
-  match methodtype x with
-  | FunT (_, _, _, { Type.return_t; _; }) -> return_t
-  | _ -> failwith "Getter property with unexpected type"
+let gettertype ({return_t; _}: t) = return_t
 
-let settertype x =
-  match methodtype x with
-  | FunT (_, _, _, { params_tlist = [param_t]; _; }) -> param_t
-  | _ ->  failwith "Setter property with unexpected type"
+let settertype {params; _} =
+  match Func_params.tlist params with
+  | [param_t] -> param_t
+  | _ -> failwith "Setter property with unexpected type"
 
 let toplevels id cx this super ~decls ~stmts ~expr
   {kind; tparams_map; params; body; return_t; _} =
@@ -211,6 +219,7 @@ let toplevels id cx this super ~decls ~stmts ~expr
       | Predicate -> Scope.Predicate
       | Async -> Scope.Async
       | Generator -> Scope.Generator
+      | AsyncGenerator -> Scope.AsyncGenerator
     in
     Scope.fresh ~var_scope_kind ()
   in
@@ -243,13 +252,13 @@ let toplevels id cx this super ~decls ~stmts ~expr
   );
 
   (* early-add our own name binding for recursive calls *)
-  Option.iter id ~f:(fun (loc, {Ast.Identifier.name; _}) ->
+  Option.iter id ~f:(fun (loc, name) ->
     let entry = Scope.Entry.new_var ~loc (AnyT.at loc) in
     Scope.add_entry name entry function_scope
   );
 
   let yield_t, next_t =
-    if kind = Generator then
+    if kind = Generator || kind = AsyncGenerator then
       Flow.mk_tvar cx (replace_reason_const (RCustom "yield") reason),
       Flow.mk_tvar cx (replace_reason_const (RCustom "next") reason)
     else
@@ -289,10 +298,9 @@ let toplevels id cx this super ~decls ~stmts ~expr
         match statements with
         | [(_, Return { Return.argument = Some _})] -> ()
         | _ ->
-            let loc = loc_of_reason reason in
-            let msg = "Invalid body for predicate function. \
-              Expected a simple return statement as body." in
-            Flow_error.add_error cx (loc, [msg])
+          let loc = loc_of_reason reason in
+          Flow_error.(add_output cx
+            (EUnsupportedSyntax (loc, PredicateInvalidBody)))
       end
     | _ -> ()
   );
@@ -324,13 +332,18 @@ let toplevels id cx this super ~decls ~stmts ~expr
       let return_t = VoidT.at loc in
       FunImplicitReturn,
       Flow.get_builtin_typeapp cx reason "Generator" [yield_t; return_t; next_t]
+    | AsyncGenerator ->
+      let reason = mk_reason (RCustom "AsyncGenerator<Yield,void,Next>") loc in
+      let return_t = VoidT.at loc in
+      FunImplicitReturn,
+      Flow.get_builtin_typeapp cx reason "AsyncGenerator" [yield_t; return_t; next_t]
     | FieldInit e ->
       let return_t = expr cx e in
       UnknownUse, return_t
     | Predicate ->
       let loc = loc_of_reason reason in
-      let msg = "Predicate functions need to return non-void." in
-      Flow_error.add_error cx (loc, [msg]);
+      Flow_error.(add_output cx
+        (EUnsupportedSyntax (loc, PredicateVoidReturn)));
       FunImplicitReturn, VoidT.at loc
     in
     Flow.flow cx (void_t, UseT (use_op, return_t))

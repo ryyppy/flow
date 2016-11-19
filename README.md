@@ -98,7 +98,7 @@ For example, on Ubuntu 14.04 and similar systems:
 sudo apt-get install ocaml libelf-dev
 ```
 
-On OSX, using the [brew package manager](http://brew.sh/):
+On OS X, using the [brew package manager](http://brew.sh/):
 
 ```
 brew install ocaml ocamlbuild libelf opam
@@ -113,6 +113,14 @@ make
 This produces a `bin` folder containing the `flow` binary.
 
 *Note: at this time, the OCaml dependency prevents us from adding Flow to [npm](http://npmjs.org). Try [flow-bin](https://www.npmjs.org/package/flow-bin) if you need a npm binary wrapper.*
+
+Flow can also compile its parser to JavaScript. [Read how here](src/parser/README.md).
+
+## Using Flow's parser from JavaScript
+
+While Flow is written in OCaml, its parser is available as a compiled-to-JavaScript module published to npm, named [flow-parser](https://www.npmjs.com/package/flow-parser). **Most end users of Flow
+will not need to use this parser directly** (and should install [flow-bin](https://www.npmjs.org/package/flow-bin) from npm above), but JavaScript packages which make use of parsing
+Flow-typed JavaScript can use this to generate Flow's syntax tree with annotated types attached.
 
 ## Running the tests
 

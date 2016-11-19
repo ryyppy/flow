@@ -105,6 +105,7 @@ and _json_of_t_impl json_cx t = Hh_json.(
   | NullT _
   | VoidT _
   | TaintT _
+  | ObjProtoT _
   | FunProtoT _
   | FunProtoApplyT _
   | FunProtoBindT _
@@ -337,6 +338,11 @@ and _json_of_use_t_impl json_cx t = Hh_json.(
       "type", _json_of_t json_cx t
     ]
 
+  | AssertArithmeticOperandT _ -> []
+  | AssertBinaryInLHST _ -> []
+  | AssertBinaryInRHST _ -> []
+  | AssertForInRHST _ -> []
+
   | BecomeT (_, t) -> [
       "result", _json_of_t json_cx t
     ]
@@ -355,8 +361,8 @@ and _json_of_use_t_impl json_cx t = Hh_json.(
       "funType", json_of_funtype json_cx funtype
     ]
 
-  | MethodT (_, _, name, funtype) -> [
-      "name", json_of_propname json_cx name;
+  | MethodT (_, _, propref, funtype) -> [
+      "propRef", json_of_propref json_cx propref;
       "funType", json_of_funtype json_cx funtype
     ]
 
@@ -372,7 +378,7 @@ and _json_of_use_t_impl json_cx t = Hh_json.(
   | SetPropT (_, name, t)
   | GetPropT (_, name, t)
   | TestPropT (_, name, t) -> [
-      "propName", json_of_propname json_cx name;
+      "propRef", json_of_propref json_cx name;
       "propType", _json_of_t json_cx t
     ]
 
@@ -380,6 +386,11 @@ and _json_of_use_t_impl json_cx t = Hh_json.(
   | GetElemT (_, indext, elemt) -> [
       "indexType", _json_of_t json_cx indext;
       "elemType", _json_of_t json_cx elemt
+    ]
+
+  | CallElemT (_, _, indext, funtype) -> [
+      "indexType", _json_of_t json_cx indext;
+      "funType", json_of_funtype json_cx funtype
     ]
 
   | GetStaticsT (_, t) -> [
@@ -453,7 +464,16 @@ and _json_of_use_t_impl json_cx t = Hh_json.(
       "polarity", json_of_polarity json_cx polarity
     ]
 
-  | LookupT (_, rstrict, _, name, action) ->
+  | TypeAppVarianceCheckT (_, _, targs) -> [
+      "typeArgs", JSON_Array (List.map (fun (t1, t2) ->
+        JSON_Object [
+          "t1", _json_of_t json_cx t1;
+          "t2", _json_of_t json_cx t2;
+        ]
+      ) targs)
+    ]
+
+  | LookupT (_, rstrict, _, propref, action) ->
     (match rstrict with
       | NonstrictReturning None -> []
       | NonstrictReturning (Some (default, result)) -> [
@@ -472,7 +492,7 @@ and _json_of_use_t_impl json_cx t = Hh_json.(
             JSON_Number (Properties.string_of_id id)
         ))]
     ) @ [
-      "name", JSON_String name;
+      "propref", json_of_propref json_cx propref;
       "action", json_of_lookup_action json_cx action
     ]
 
@@ -522,15 +542,19 @@ and _json_of_use_t_impl json_cx t = Hh_json.(
   | HasPropT (_, strict, key) ->
     (match strict with
       | None -> []
-      | Some r -> ["strictReason", json_of_reason ~strip_root:json_cx.strip_root r]
+      | Some r -> [
+          "strictReason", json_of_reason ~strip_root:json_cx.strip_root r
+        ]
     ) @ [
       "key", JSON_Object (_json_of_string_literal key)
     ]
 
-  | ElemT (_, base, elem, rw) -> [
+  | ElemT (_, base, action) -> [
       "baseType", _json_of_t json_cx base;
-      "elemType", _json_of_t json_cx elem;
-      "rw", JSON_String (string_of_rw rw);
+      match action with
+      | ReadElem t -> "readElem", _json_of_t json_cx t
+      | WriteElem t -> "writeElem", _json_of_t json_cx t
+      | CallElem (_, funtype) -> "callElem", json_of_funtype json_cx funtype
     ]
 
   | MakeExactT (_, cont) -> _json_of_cont json_cx cont
@@ -823,17 +847,23 @@ and json_of_destructor_impl _json_cx = Hh_json.(function
 and json_of_polarity_map json_cx = check_depth json_of_polarity_map_impl json_cx
 and json_of_polarity_map_impl json_cx pmap = Hh_json.(
   let lst = SMap.fold (fun name pol acc ->
-    JSON_Object ["name", JSON_String name; "polarity", json_of_polarity json_cx pol] :: acc
+    JSON_Object [
+      "name", JSON_String name;
+      "polarity", json_of_polarity json_cx pol
+    ] :: acc
   ) pmap [] in
   JSON_Array (List.rev lst)
 )
 
-and json_of_propname json_cx = check_depth json_of_propname_impl json_cx
-and json_of_propname_impl _json_cx (reason, literal) = Hh_json.(
-  JSON_Object [
-    "reason", json_of_reason ~strip_root:_json_cx.strip_root reason;
-    "literal", JSON_String literal;
-  ]
+and json_of_propref json_cx = check_depth json_of_propref_impl json_cx
+and json_of_propref_impl json_cx = Hh_json.(function
+  | Named (r, x) -> JSON_Object [
+      "reason", json_of_reason ~strip_root:json_cx.strip_root r;
+      "name", JSON_String x;
+    ]
+  | Computed t -> JSON_Object [
+      "elem", _json_of_t json_cx t
+    ]
 )
 
 and json_of_tmap json_cx = check_depth json_of_tmap_impl json_cx
@@ -1002,7 +1032,8 @@ and json_of_tkeys_impl json_cx tmap = Hh_json.(
 
 and json_of_use_tkeys json_cx = check_depth json_of_use_tkeys_impl json_cx
 and json_of_use_tkeys_impl json_cx tmap = Hh_json.(
-  JSON_Array (UseTypeMap.fold (fun t _ acc -> _json_of_use_t json_cx t :: acc) tmap [])
+  let f = fun t _ acc -> _json_of_use_t json_cx t :: acc in
+  JSON_Array (UseTypeMap.fold f tmap [])
 )
 
 and json_of_tvarkeys json_cx = check_depth json_of_tvarkeys_impl json_cx
@@ -1010,7 +1041,8 @@ and json_of_tvarkeys_impl _json_cx imap = Hh_json.(
   JSON_Array (IMap.fold (fun i _ acc -> ((int_ i) :: acc)) imap [])
 )
 
-and json_of_lookup_action json_cx = check_depth json_of_lookup_action_impl json_cx
+and json_of_lookup_action json_cx =
+  check_depth json_of_lookup_action_impl json_cx
 and json_of_lookup_action_impl json_cx action = Hh_json.(
   JSON_Object (
     match action with
@@ -1031,11 +1063,23 @@ and json_of_lookup_action_impl json_cx action = Hh_json.(
 )
 
 let json_of_t ?(size=5000) ?(depth=1000) ?(strip_root=None) cx t =
-  let json_cx = { cx; size = ref size; depth; stack = ISet.empty; strip_root; } in
+  let json_cx = {
+    cx;
+    size = ref size;
+    depth;
+    stack = ISet.empty;
+    strip_root;
+  } in
   _json_of_t json_cx t
 
 let json_of_use_t ?(size=5000) ?(depth=1000) ?(strip_root=None) cx use_t =
-  let json_cx = { cx; size = ref size; depth; stack = ISet.empty; strip_root; } in
+  let json_cx = {
+    cx;
+    size = ref size;
+    depth;
+    stack = ISet.empty;
+    strip_root;
+  } in
   _json_of_use_t json_cx use_t
 
 let jstr_of_t ?(size=5000) ?(depth=1000) ?(strip_root=None) cx t =
@@ -1046,7 +1090,13 @@ let jstr_of_use_t ?(size=5000) ?(depth=1000) ?(strip_root=None) cx use_t =
 
 let json_of_graph ?(size=5000) ?(depth=1000) ?(strip_root=None) cx = Hh_json.(
   let entries = IMap.fold (fun id _ entries ->
-    let json_cx = { cx; size = ref size; depth; stack = ISet.empty; strip_root; } in
+    let json_cx = {
+      cx;
+      size = ref size;
+      depth;
+      stack = ISet.empty;
+      strip_root;
+    } in
     (spf "%d" id, json_of_node json_cx id) :: entries
   ) (Context.graph cx) [] in
   JSON_Object (List.rev entries)
@@ -1061,15 +1111,17 @@ let jstr_of_graph ?(size=5000) ?(depth=1000) ?(strip_root=None) cx =
 let json_of_scope = Scope.(
   let open Hh_json in
 
-  let json_of_value_impl json_cx {
-    Entry.kind; value_state; value_declare_loc; value_assign_loc; specific; general
+  let json_of_value_impl json_cx { Entry.
+    kind; value_state; value_declare_loc; value_assign_loc; specific; general
   } =
     JSON_Object [
       "entry_type", JSON_String "Value";
       "kind", JSON_String (Entry.string_of_value_kind kind);
       "value_state", JSON_String (State.to_string value_state);
-      "value_declare_loc", json_of_loc ~strip_root:json_cx.strip_root value_declare_loc;
-      "value_assign_loc", json_of_loc ~strip_root:json_cx.strip_root value_assign_loc;
+      "value_declare_loc",
+        json_of_loc ~strip_root:json_cx.strip_root value_declare_loc;
+      "value_assign_loc",
+        json_of_loc ~strip_root:json_cx.strip_root value_assign_loc;
       "specific", _json_of_t json_cx specific;
       "general", _json_of_t json_cx general;
     ]
@@ -1122,7 +1174,13 @@ let json_of_scope = Scope.(
   let json_of_refis json_cx = check_depth json_of_refis_impl json_cx in
 
   fun ?(size=5000) ?(depth=1000) ?(strip_root=None) cx scope ->
-    let json_cx = { cx; size = ref size; depth; stack = ISet.empty; strip_root; } in
+    let json_cx = {
+      cx;
+      size = ref size;
+      depth;
+      stack = ISet.empty;
+      strip_root;
+    } in
     JSON_Object [
       "kind", JSON_String (string_of_kind scope.kind);
       "entries", json_of_entries json_cx scope.entries;
@@ -1178,6 +1236,36 @@ and dump_t_ (depth, tvars) cx t =
           ) upper [])))
   in
 
+  let defer_use =
+    let string_of_selector = function
+    | Prop name -> spf "prop `%s`" name
+    | Elem _ -> "elem"
+    | ObjRest _ -> "obj rest"
+    | ArrRest i -> spf "arr rest at index %d" i
+    | Default -> "default"
+    | Become -> "become"
+    | Refine _ -> "refine"
+    in
+    let string_of_destructor = function
+    | NonMaybeType -> "non-maybe type"
+    | PropertyType x -> spf "property type `%s`" x
+    in
+    fun expr t -> match expr with
+    | DestructuringT (_, selector) ->
+      spf "Destructure %s on %s" (string_of_selector selector) t
+    | TypeDestructorT (_, destructor) ->
+      spf "TypeDestruct %s on %s" (string_of_destructor destructor) t
+  in
+
+  let string_of_mixed_flavor = function
+    | Mixed_everything -> "Mixed_everything"
+    | Mixed_truthy -> "Mixed_truthy"
+    | Mixed_non_maybe -> "Mixed_non_maybe"
+    | Mixed_non_null -> "Mixed_non_null"
+    | Mixed_non_void -> "Mixed_non_void"
+    | Empty_intersection -> "Empty_intersection"
+  in
+
   if depth = 0 then string_of_ctor t
   else match t with
   | OpenT (_, id) -> p ~extra:(tvar id) t
@@ -1192,19 +1280,24 @@ and dump_t_ (depth, tvars) cx t =
   | BoolT (_, c) -> p ~extra:(match c with
     | Some b -> spf "%B" b
     | None -> "") t
-  | FunT (_,_,_,{params_tlist;return_t;_}) -> p ~extra:(spf "[%s] (%s)"
-      (String.concat "; " (List.map kid params_tlist))
-      (kid return_t)) t
+  | FunT (_,_,_,{params_tlist;return_t;this_t;_}) -> p
+      ~extra:(spf "<this: %s>(%s) => %s"
+        (kid this_t)
+        (String.concat "; " (List.map kid params_tlist))
+        (kid return_t)) t
+  | MixedT (_, flavor) -> p ~extra:(string_of_mixed_flavor flavor) t
   | EmptyT _
-  | MixedT _
   | AnyT _
   | NullT _
   | VoidT _
+  | ObjProtoT _
   | FunProtoT _
   | FunProtoApplyT _
   | FunProtoBindT _
-  | FunProtoCallT _
-  | PolyT _ -> p t
+  | FunProtoCallT _ -> p t
+  | PolyT (tps,c) -> p ~extra:(spf "%s [%s]"
+      (kid c)
+      (String.concat "; " (List.map (fun tp -> tp.name) tps))) t
   | ThisClassT _ -> p t
   | BoundT param -> p ~extra:param.name t
   | ExistsT _ -> p t
@@ -1215,13 +1308,13 @@ and dump_t_ (depth, tvars) cx t =
   | ClassT inst -> p ~reason:false ~extra:(kid inst) t
   | InstanceT (_, _, _, { class_id; _ }) -> p ~extra:(spf "#%d" class_id) t
   | TypeT (_, arg) -> p ~extra:(kid arg) t
-  | AnnotT (sink, source) -> p ~reason:false
-      ~extra:(spf "%s, %s" (kid sink) (kid source)) t
+  | AnnotT (_, source) -> p ~reason:false
+      ~extra:(spf "%s" (kid source)) t
   | OptionalT arg
   | RestT arg
   | AbstractT arg -> p ~reason:false ~extra:(kid arg) t
-  | EvalT (_, expr, id) -> p
-      ~extra:(spf "%s, %d" (string_of_defer_use_ctor expr) id) t
+  | EvalT (arg, expr, id) -> p
+      ~extra:(spf "%s, %d" (defer_use expr (kid arg)) id) t
   | TypeAppT (base, args) -> p ~reason:false ~extra:(spf "%s, [%s]"
       (kid base) (String.concat "; " (List.map kid args))) t
   | ThisTypeAppT (base, this, args) -> p ~reason:false
@@ -1273,6 +1366,11 @@ and dump_use_t_ (depth, tvars) cx t =
   let use_kid use_t = dump_use_t_ (depth-1, tvars) cx use_t in
   let prop p = dump_prop_ (depth-1, tvars) cx p in
 
+  let propref = function
+    | Named (r, x) -> spf "%S %s" (dump_reason cx r) x
+    | Computed t -> kid t
+  in
+
   let lookup_kind = function
   | NonstrictReturning None -> "Nonstrict"
   | NonstrictReturning (Some (t, _)) -> spf "Nonstrict returning %s" (kid t)
@@ -1290,94 +1388,107 @@ and dump_use_t_ (depth, tvars) cx t =
   | SuperProp p -> spf "Super %s" (prop p)
   in
 
+  let try_flow = function
+    | UnionCases (t, ts) ->
+        spf "(%s, [%s])" (kid t) (String.concat "; " (List.map kid ts))
+    | IntersectionCases (ts, use_t) ->
+        spf "([%s], %s)" (String.concat "; " (List.map kid ts)) (use_kid use_t)
+  in
+
   if depth = 0 then string_of_use_ctor t
   else match t with
   | UseT (use_op, t) -> spf "UseT (%s, %s)" (string_of_use_op use_op) (kid t)
-  | SummarizeT (_, arg) -> p ~extra:(kid arg) t
-  | SuperT _ -> p t
-  | MixinT (_, arg) -> p ~extra:(kid arg) t
-  | ApplyT (_, f, _) -> p ~extra:(kid f) t
-  | BindT _ -> p t
-  | CallT (_,{params_tlist;return_t;_}) -> p ~extra:(spf "[%s] (%s)"
-      (String.concat "; " (List.map kid params_tlist))
-      (kid return_t)) t
-  | MethodT (_, _, (r, name), _) -> p ~extra:(spf "(%S, %S)"
-      (string_of_desc (desc_of_reason r))
-      name) t
-  | SetPropT (_, (r, name), ptype) -> p ~extra:(spf "(%S, %S), %s"
-      (string_of_desc (desc_of_reason r))
-      name
-      (kid ptype)) t
-  | GetPropT (_, (r, name), ptype)
-  | TestPropT (_, (r, name), ptype) -> p ~extra:(spf "(%S, %S), %s"
-      (string_of_desc (desc_of_reason r))
-      name
-      (kid ptype)) t
-  | SetElemT (_, ix, etype) -> p ~extra:(spf "%s, %s" (kid ix) (kid etype)) t
-  | GetElemT (_, ix, etype) -> p ~extra:(spf "%s, %s" (kid ix) (kid etype)) t
-  | GetStaticsT (_, arg) -> p ~extra:(kid arg) t
-  | ConstructorT _ -> p t
   | AdderT (_, x, y) -> p ~extra:(spf "%s, %s" (kid x) (kid y)) t
-  | ComparatorT (_, arg) -> p ~extra:(kid arg) t
-  | ReposLowerT (_, arg) -> p ~extra:(use_kid arg) t
-  | ReposUseT (_, _, arg) -> p ~extra:(kid arg) t
+  | AndT (_, x, y) -> p ~extra:(spf "%s, %s" (kid x) (kid y)) t
+  | ApplyT (_, f, _) -> p ~extra:(kid f) t
+  | ArrRestT _ -> p t
+  | AssertArithmeticOperandT _ -> p t
+  | AssertBinaryInLHST _ -> p t
+  | AssertBinaryInRHST _ -> p t
+  | AssertForInRHST _ -> p t
+  | AssertImportIsValueT _ -> p t
   | BecomeT (_, arg) -> p ~extra:(kid arg) t
-  | PredicateT (pred, arg) -> p ~reason:false
-      ~extra:(spf "%s, %s" (string_of_predicate pred) (kid arg)) t
+  | BindT _ -> p t
+  | CallElemT (_, _, ix, _) -> p ~extra:(kid ix) t
+  | CallT (_,{params_tlist;return_t;this_t;_}) -> p
+      ~extra:(spf "<this: %s>(%s) => %s"
+        (kid this_t)
+        (String.concat "; " (List.map kid params_tlist))
+        (kid return_t)) t
+  | CallLatentPredT _ -> p t
+  | CallOpenPredT _ -> p t
+  | ChoiceKitUseT (_, TryFlow (_, spec)) ->
+      p ~extra:(try_flow spec) t
+  | ChoiceKitUseT _ -> p t
+  | CJSExtractNamedExportsT _ -> p t
+  | CJSRequireT _ -> p t
+  | ComparatorT (_, arg) -> p ~extra:(kid arg) t
+  | ConstructorT _ -> p t
+  | CopyNamedExportsT _ -> p t
+  | DebugPrintT _ -> p t
+  | ElemT _ -> p t
+  | EqT (_, arg) -> p ~extra:(kid arg) t
+  | ExportNamedT _ -> p t
+  | GetElemT (_, ix, etype) -> p ~extra:(spf "%s, %s" (kid ix) (kid etype)) t
+  | GetKeysT _ -> p t
+  | GetPropT (_, prop, ptype) -> p ~extra:(spf "(%s), %s"
+      (propref prop)
+      (kid ptype)) t
+  | GetStaticsT (_, arg) -> p ~extra:(kid arg) t
   | GuardT (pred, result, sink) -> p ~reason:false
       ~extra:(spf "%s, %s, %s"
         (string_of_predicate pred) (kid result) (kid sink))
       t
-  | EqT (_, arg) -> p ~extra:(kid arg) t
-  | AndT (_, x, y) -> p ~extra:(spf "%s, %s" (kid x) (kid y)) t
-  | OrT (_, x, y) -> p ~extra:(spf "%s, %s" (kid x) (kid y)) t
-  | NotT (_, arg) -> p ~extra:(kid arg) t
-  | SpecializeT (_, _, b, args, ret) -> p ~extra:(spf "%b, [%s], %s"
-      b (String.concat "; " (List.map kid args)) (kid ret)) t
-  | ThisSpecializeT (_, x, y) -> p ~extra:(spf "%s, %s" (kid x) (kid y)) t
-  | VarianceCheckT (_, args, pol) -> p ~extra:(spf "[%s], %s"
-      (String.concat "; " (List.map kid args)) (Polarity.string pol)) t
-  | LookupT (_, kind, _, name, action) -> p ~extra:(spf "%S, %s, %s"
-      name
+  | HasOwnPropT _ -> p t
+  | HasPropT _ -> p t
+  | IdxUnMaybeifyT _ -> p t
+  | IdxUnwrap _ -> p t
+  | ImportDefaultT _ -> p t
+  | ImportModuleNsT _ -> p t
+  | ImportNamedT _ -> p t
+  | ImportTypeofT _ -> p t
+  | ImportTypeT _ -> p t
+  | IntersectionPreprocessKitT _ -> p t
+  | LookupT (_, kind, _, prop, action) -> p ~extra:(spf "%S, %s, %s"
+      (propref prop)
       (lookup_kind kind)
       (lookup_action action)) t
+  | MakeExactT _ -> p t
+  | MapTypeT _ -> p t
+  | MethodT (_, _, prop, _) -> p ~extra:(spf "(%s)" (propref prop)) t
+  | MixinT (_, arg) -> p ~extra:(kid arg) t
+  | NotT (_, arg) -> p ~extra:(kid arg) t
+  | ObjAssignT _ -> p t
+  | ObjFreezeT _ -> p t
+  | ObjRestT _ -> p t
+  | ObjSealT _ -> p t
+  | ObjTestT _ -> p t
+  | OrT (_, x, y) -> p ~extra:(spf "%s, %s" (kid x) (kid y)) t
+  | PredicateT (pred, arg) -> p ~reason:false
+      ~extra:(spf "%s, %s" (string_of_predicate pred) (kid arg)) t
+  | ReactCreateElementT _ -> p t
+  | RefineT _ -> p t
+  | ReposLowerT (_, arg) -> p ~extra:(use_kid arg) t
+  | ReposUseT (_, _, arg) -> p ~extra:(kid arg) t
+  | SentinelPropTestT _ -> p t
+  | SubstOnPredT _ -> p t
+  | SummarizeT (_, arg) -> p ~extra:(kid arg) t
+  | SuperT _ -> p t
+  | SetElemT (_, ix, etype) -> p ~extra:(spf "%s, %s" (kid ix) (kid etype)) t
+  | SetPropT (_, prop, ptype) -> p ~extra:(spf "(%s), %s"
+      (propref prop)
+      (kid ptype)) t
+  | SpecializeT (_, _, b, args, ret) -> p ~extra:(spf "%b, [%s], %s"
+      b (String.concat "; " (List.map kid args)) (kid ret)) t
+  | TestPropT (_, prop, ptype) -> p ~extra:(spf "(%s), %s"
+      (propref prop)
+      (kid ptype)) t
+  | ThisSpecializeT (_, x, y) -> p ~extra:(spf "%s, %s" (kid x) (kid y)) t
+  | UnaryMinusT _ -> p t
   | UnifyT (x, y) -> p ~reason:false ~extra:(spf "%s, %s" (kid x) (kid y)) t
-  | ObjAssignT _
-  | ObjFreezeT _
-  | ObjRestT _
-  | ObjSealT _
-  | ObjTestT _
-  | ArrRestT _
-  | UnaryMinusT _
-  | GetKeysT _
-  | HasOwnPropT _
-  | HasPropT _
-  | ElemT _
-  | MakeExactT _
-  | ImportModuleNsT _
-  | ImportDefaultT _
-  | ImportNamedT _
-  | ImportTypeT _
-  | ImportTypeofT _
-  | AssertImportIsValueT _
-  | CJSRequireT _
-  | CJSExtractNamedExportsT _
-  | CopyNamedExportsT _
-  | ExportNamedT _
-  | DebugPrintT _
-  | MapTypeT _
-  | ReactCreateElementT _
-  | SentinelPropTestT _
-  | IntersectionPreprocessKitT _
-  | ChoiceKitUseT _
-  | IdxUnwrap _
-  | IdxUnMaybeifyT _
-  | CallLatentPredT _
-  | CallOpenPredT _
-  | SubstOnPredT _
-  | RefineT _
-  ->
-    p t
+  | VarianceCheckT (_, args, pol) -> p ~extra:(spf "[%s], %s"
+      (String.concat "; " (List.map kid args)) (Polarity.string pol)) t
+  | TypeAppVarianceCheckT _ -> p t
 
 and dump_prop ?(depth=3) cx p =
   dump_prop_ (depth, ISet.empty) cx p
@@ -1400,8 +1511,8 @@ and dump_prop_ (depth, tvars) cx p =
 
 let string_of_scope_entry = Scope.(
 
-  let string_of_value_binding cx {
-    Entry.kind; value_state; value_declare_loc; value_assign_loc; specific; general
+  let string_of_value_binding cx { Entry.
+    kind; value_state; value_declare_loc; value_assign_loc; specific; general
   } =
     spf "{ kind: %s; value_state: %s; value_declare_loc: %S; \
       value_assign_loc: %s; specific: %s; general: %s }"

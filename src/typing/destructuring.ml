@@ -11,7 +11,6 @@
 (* AST handling for destructuring exprs *)
 
 module Ast = Spider_monkey_ast
-module FlowError = Flow_error
 
 open Utils_js
 open Reason
@@ -24,9 +23,8 @@ open Type
  *)
 let rec extract_destructured_bindings accum pattern = Ast.Pattern.(
   match pattern with
-  | Identifier (loc, n) ->
-    let name = n.Ast.Identifier.name in
-    (loc, name)::accum
+  | Identifier { Identifier.name; _ } ->
+    name::accum
 
   | Object n ->
     let props = n.Object.properties in
@@ -61,9 +59,6 @@ and extract_arr_elem_pattern_bindings accum = Ast.Pattern.Array.(function
 
   | None -> accum
 )
-
-let error_destructuring cx loc =
-  FlowError.add_error cx (loc, ["unsupported destructuring"])
 
 (* Destructuring visitor for tree-shaped patterns, parameteric over an action f
    to perform at the leaves. A type for the pattern is passed, which is taken
@@ -129,24 +124,21 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
       properties |> List.iter (function
         | Property (loc, prop) ->
             begin match prop with
-            | { Property.key =
-                  Property.Identifier (loc, { Ast.Identifier.name; _ });
-                pattern = p; _; }
+            | { Property.
+                key = Property.Identifier (loc, name);
+                pattern = p; _;
+              }
             | { Property.key =
                   Property.Literal (loc, { Ast.Literal.
                     value = Ast.Literal.String name; _ });
                 pattern = p; _; }
               ->
-                let reason = mk_reason (RProperty name) loc in
+                let reason = mk_reason (RProperty (Some name)) loc in
                 xs := name :: !xs;
                 let init = Option.map init (fun init ->
                   loc, Ast.Expression.(Member Member.({
                     _object = init;
-                    property = PropertyIdentifier (loc, {
-                      Ast.Identifier.name;
-                      typeAnnotation = None;
-                      optional = false
-                    });
+                    property = PropertyIdentifier (loc, name);
                     computed = false;
                   }))
                 ) in
@@ -186,8 +178,9 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
                 ) in
                 let default = Option.map default (Default.elem key_t reason) in
                 recurse ~parent_pattern_t tvar init default p
-            | _ ->
-              error_destructuring cx loc
+            | { Property.key = Property.Literal _; _ } ->
+                Flow_error.(add_output cx (EUnsupportedSyntax
+                  (loc, DestructuringObjectPropertyLiteralNonString)))
             end
 
         | RestProperty (loc, { RestProperty.argument = p }) ->
@@ -200,7 +193,7 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
       )
     )
 
-  | loc, Identifier (_, { Ast.Identifier.name; _ }) ->
+  | loc, Identifier { Identifier.name = (_, name); _ } ->
       Type_inference_hooks_js.dispatch_lval_hook cx name loc (
         match (parent_pattern_t, init) with
         (**
@@ -236,7 +229,9 @@ let destructuring cx ~expr ~f = Ast.Pattern.(
       in
       recurse ?parent_pattern_t tvar init default left
 
-  | loc, _ -> error_destructuring cx loc
+  | loc, Expression _ ->
+      Flow_error.(add_output cx (EUnsupportedSyntax
+        (loc, DestructuringExpressionPattern)))
 
   in fun t init default pattern -> recurse t init default pattern
 )
@@ -247,7 +242,7 @@ let type_of_pattern = Ast.Pattern.(function
 
   | _, Object { Object.typeAnnotation; _; } -> typeAnnotation
 
-  | _, Identifier (_, { Ast.Identifier.typeAnnotation; _; }) -> typeAnnotation
+  | _, Identifier { Identifier.typeAnnotation; _; } -> typeAnnotation
 
   | _, _ -> None
 )

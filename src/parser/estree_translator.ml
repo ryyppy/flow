@@ -182,19 +182,18 @@ end with type t = Impl.t) = struct
       |]
     )
   | loc, ForOf forof -> ForOf.(
+      let type_ =
+        if forof.async
+        then "ForAwaitStatement"
+        else "ForOfStatement"
+      in
       let left = (match forof.left with
       | LeftDeclaration left -> variable_declaration left
       | LeftExpression left -> expression left) in
-      node "ForOfStatement" loc [|
+      node type_ loc [|
         "left", left;
         "right", expression forof.right;
         "body", statement forof.body;
-      |]
-    )
-  | loc, Let _let -> Let.(
-      node "LetStatement" loc [|
-        "head", array_of_list let_assignment _let.head;
-        "body", statement _let.body;
       |]
     )
   | loc, Debugger -> node "DebuggerStatement" loc [||]
@@ -491,12 +490,6 @@ end with type t = Impl.t) = struct
           "filter", option expression gen.filter;
         |]
       )
-    | loc, Let _let -> Let.(
-        node "LetExpression" loc [|
-          "head", array_of_list let_assignment _let.head;
-          "body", expression _let.body;
-        |]
-      )
     | _loc, Identifier id -> identifier id
     | loc, Literal lit -> literal (loc, lit)
     | loc, TemplateLiteral lit -> template_literal (loc, lit)
@@ -549,13 +542,21 @@ end with type t = Impl.t) = struct
     |]
   )
 
-  and identifier (loc, id) = Identifier.(
+  and identifier (loc, name) =
     node "Identifier" loc [|
-      "name", string id.name;
-      "typeAnnotation", option type_annotation id.typeAnnotation;
-      "optional", bool id.optional;
+      "name", string name;
+      "typeAnnotation", null;
+      "optional", bool false;
     |]
-  )
+
+  and pattern_identifier loc {
+    Pattern.Identifier.name; typeAnnotation; optional;
+  } =
+    node "Identifier" loc [|
+      "name", string (snd name);
+      "typeAnnotation", option type_annotation typeAnnotation;
+      "optional", bool optional;
+    |]
 
   and case (loc, c) = Statement.Switch.Case.(
     node "SwitchCase" loc [|
@@ -576,22 +577,27 @@ end with type t = Impl.t) = struct
       "body", statement_list b.Statement.Block.body;
     |]
 
-  and let_assignment assignment = Statement.Let.(
-    obj [|
-      "id", pattern assignment.id;
-      "init", option expression assignment.init;
-    |]
-  )
-
   and declare_variable (loc, d) = Statement.DeclareVariable.(
+    let id_loc = Loc.btwn (fst d.id) (match d.typeAnnotation with
+      | Some typeAnnotation -> fst typeAnnotation
+      | None -> fst d.id) in
     node "DeclareVariable" loc [|
-      "id", identifier d.id;
+      "id", pattern_identifier id_loc {
+        Pattern.Identifier.name = d.id;
+                           typeAnnotation = d.typeAnnotation;
+                           optional = false;
+      };
     |]
   )
 
   and declare_function (loc, d) = Statement.DeclareFunction.(
+    let id_loc = Loc.btwn (fst d.id) (fst d.typeAnnotation) in
     node "DeclareFunction" loc [|
-      "id", identifier d.id;
+      "id", pattern_identifier id_loc {
+        Pattern.Identifier.name = d.id;
+                           typeAnnotation = Some d.typeAnnotation;
+                           optional = false;
+      };
       "predicate", option predicate d.predicate
     |]
   )
@@ -749,7 +755,8 @@ end with type t = Impl.t) = struct
           "left", pattern left;
           "right", expression right
         |]
-    | _loc, Identifier id -> identifier id
+    | loc, Identifier pattern_id ->
+        pattern_identifier loc pattern_id
     | _loc, Expression expr -> expression expr)
 
   and function_params = function
@@ -906,14 +913,11 @@ end with type t = Impl.t) = struct
       |]
     )
 
-  and variance (loc, sigil) =
-    let kind = Variance.(match sigil with
+  and variance (_, sigil) = Variance.(
+    match sigil with
     | Plus -> string "plus"
     | Minus -> string "minus"
-    ) in
-    node "Variance" loc [|
-      "kind", kind
-    |]
+  )
 
   and _type (loc, t) = Type.(
     match t with
@@ -948,7 +952,7 @@ end with type t = Impl.t) = struct
 
   and void_type loc = node "VoidTypeAnnotation" loc [||]
 
-  and null_type loc = node "NullTypeAnnotation" loc [||]
+  and null_type loc = node "NullLiteralTypeAnnotation" loc [||]
 
   and number_type loc = node "NumberTypeAnnotation" loc [||]
 
@@ -973,7 +977,7 @@ end with type t = Impl.t) = struct
 
   and function_type_param (loc, param) = Type.Function.Param.(
     node "FunctionTypeParam" loc [|
-      "name", identifier param.name;
+      "name", option identifier param.name;
       "typeAnnotation", _type param.typeAnnotation;
       "optional", bool param.optional;
     |]
@@ -1016,7 +1020,7 @@ end with type t = Impl.t) = struct
 
   and object_type_indexer (loc, indexer) = Type.Object.Indexer.(
     node "ObjectTypeIndexer" loc [|
-      "id", identifier indexer.id;
+      "id", option identifier indexer.id;
       "key", _type indexer.key;
       "value", _type indexer.value;
       "static", bool indexer.static;

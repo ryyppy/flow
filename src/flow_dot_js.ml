@@ -90,6 +90,7 @@ let stub_metadata ~root ~checked = { Context.
   suppress_types = SSet.empty;
   verbose = None;
   weak = false;
+  jsx = None;
 }
 
 let get_master_cx =
@@ -251,5 +252,7 @@ let () = Js.Unsafe.set exports
   "jsOfOcamlVersion" (Js.string Sys_js.js_of_ocaml_version)
 let () = Js.Unsafe.set exports
   "flowVersion" (Js.string FlowConfig.version)
+let () = Js.Unsafe.set exports
+  "parse" (Js.wrap_callback Flow_parser_js.parse)
 let () = Js.Unsafe.set exports
   "typeAtPos" (Js.wrap_callback type_at_pos)

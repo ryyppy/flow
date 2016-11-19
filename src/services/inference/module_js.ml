@@ -136,7 +136,7 @@ let module_name_candidates ~options name =
 (****************** shared dependency map *********************)
 
 (* map from module name to filename *)
-module NameHeap = SharedMem.WithCache (Modulename) (struct
+module NameHeap = SharedMem_js.WithCache (Modulename) (struct
   type t = filename
   let prefix = Prefix.make()
   let description = "Name"
@@ -148,7 +148,7 @@ let add_module_file = Expensive.wrap NameHeap.add
 (* map from filename to module info *)
 (* note: currently we may have many files for one module name.
    this is an issue. *)
-module InfoHeap = SharedMem.WithCache (Loc.FilenameKey) (struct
+module InfoHeap = SharedMem_js.WithCache (Loc.FilenameKey) (struct
   type t = info
   let prefix = Prefix.make()
   let description = "Info"
@@ -160,14 +160,14 @@ let add_info = Expensive.wrap InfoHeap.add
 (** module systems **)
 
 (* shared heap for package.json tokens by filename *)
-module PackageHeap = SharedMem.WithCache (StringKey) (struct
+module PackageHeap = SharedMem_js.WithCache (StringKey) (struct
     type t = Ast.Expression.t SMap.t
     let prefix = Prefix.make()
     let description = "Package"
   end)
 
 (* shared heap for package.json directories by package name *)
-module ReversePackageHeap = SharedMem.WithCache (StringKey) (struct
+module ReversePackageHeap = SharedMem_js.WithCache (StringKey) (struct
     type t = string
     let prefix = Prefix.make()
     let description = "ReversePackage"
@@ -396,22 +396,12 @@ module Node = struct
               (Files.relative_path project_root_str package)
           in
           if is_included || is_contained_in_root then (
-            spf
-              ("Internal Error! Package %S was not found in the PackageHeap! " ^^
-               "Please report this error to the Flow team.")
-              package_relative_to_root
+            FlowError.(EInternal (loc, PackageHeapNotFound package_relative_to_root))
           ) else (
-            spf
-              ("This modules resolves to %S, which is outside both your " ^^
-               "root directory and all of the entries in the [include] " ^^
-               "section of your .flowconfig. You should either add this " ^^
-               "directory to the [include] section of your .flowconfig, " ^^
-               "move your .flowconfig file higher in the project directory " ^^
-               "tree, or move this package under your Flow root directory.")
-              package_relative_to_root
+            FlowError.EModuleOutsideRoot (loc, package_relative_to_root)
           )
         in
-        FlowError.add_error cx (loc, [msg]);
+        FlowError.add_output cx msg;
         SMap.empty
       in
       let dir = Filename.dirname package in
@@ -993,7 +983,7 @@ let commit_modules workers ~options inferred removed =
   (* update NameHeap *)
   if not (NameSet.is_empty remove) then begin
     NameHeap.remove_batch remove;
-    SharedMem.collect `gentle;
+    SharedMem_js.collect options `gentle;
   end;
   MultiWorker.call
     workers
@@ -1025,7 +1015,7 @@ let clear_infos files =
    removed (#1). This is the set commit_module expects as its second
    argument.
 *)
-let rec remove_files workers files =
+let rec remove_files options workers files =
   let data = MultiWorker.call workers
     ~job: (List.fold_left (fun acc file ->
       match get_info ~audit:Expensive.ok file with
@@ -1041,9 +1031,9 @@ let rec remove_files workers files =
     ~neutral: FilenameMap.empty
     ~merge: FilenameMap.union
     ~next: (MultiWorker.next workers (FilenameSet.elements files)) in
-  remove_files_with_data data files
+  remove_files_with_data options data files
 
-and remove_files_with_data data files =
+and remove_files_with_data options data files =
   (* files may or may not be registered as module providers.
      when they are, we need to clear their registrations *)
   let names = FilenameMap.fold (fun file datum names ->
@@ -1077,7 +1067,7 @@ and remove_files_with_data data files =
   (* for infos, remove_batch will ignore missing entries, no need to filter *)
   NameHeap.remove_batch names;
   clear_infos files;
-  SharedMem.collect `gentle;
+  SharedMem_js.collect options `gentle;
   (* note: only return names of modules actually removed *)
   names
 
